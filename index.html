@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRUMPTHIS</title>
+  <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Country Selection Screen -->
+    <div id="screen-select" class="screen">
+      <div class="select-title">TRUMPTHIS</div>
+      <div class="select-subtitle">SELECT YOUR NATION</div>
+      <div id="globe-container">
+        <svg id="globe"></svg>
+        <canvas id="overlay"></canvas>
+      </div>
+      <div class="select-panel" id="select-panel"></div>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="screen-gameover" class="screen hidden">
+      <div class="gameover-title" id="gameover-title">VICTORY</div>
+      <div class="gameover-stats" id="gameover-stats"></div>
+      <button class="btn-launch" id="btn-play-again">PLAY AGAIN</button>
+    </div>
+
+    <!-- HUD (always present, shown/hidden via JS) -->
+    <div id="hud" style="display: none;">
+      <div class="hud-top">
+        <div class="game-clock" id="game-clock">00:00</div>
+        <div class="tokens" id="token-display"><span class="diamond">◆</span> <span id="token-count">50</span></div>
+      </div>
+      <div class="hud-bottom">
+        <div class="pop-bar player">
+          <div class="label">YOUR POPULATION</div>
+          <div class="bar-outer"><div class="bar-inner" id="player-pop-bar" style="width: 100%"></div></div>
+          <div class="value" id="player-pop-value">—</div>
+        </div>
+        <div class="hud-center" id="missiles-in-flight">MISSILES IN FLIGHT: 0</div>
+        <div class="pop-bar enemy">
+          <div class="label">ENEMY POPULATION</div>
+          <div class="bar-outer"><div class="bar-inner" id="enemy-pop-bar" style="width: 100%"></div></div>
+          <div class="value" id="enemy-pop-value">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CRT scanline overlay -->
+    <div class="crt-overlay"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

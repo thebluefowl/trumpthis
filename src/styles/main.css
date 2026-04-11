@@ -1,0 +1,414 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  font-family: 'Courier New', monospace;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* === Screens === */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen.hidden {
+  display: none;
+}
+
+/* === Globe container === */
+#globe-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#globe {
+  display: block;
+}
+
+#overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+/* === Globe SVG styles === */
+.ocean {
+  fill: #050510;
+}
+
+.graticule {
+  fill: none;
+  stroke: #112211;
+  stroke-width: 0.4;
+  stroke-opacity: 0.6;
+  pointer-events: none;
+}
+
+.country {
+  fill: #0a1a0a;
+  stroke: #00ff88;
+  stroke-width: 0.5;
+  cursor: pointer;
+  transition: fill 0.15s;
+}
+
+.country.non-playable {
+  stroke: #004422;
+  cursor: default;
+}
+
+.country:hover:not(.non-playable) {
+  fill: #0a2a0a;
+}
+
+.country.selected-player {
+  fill: #002233;
+  stroke: #00ccff;
+  stroke-width: 1.2;
+}
+
+.country.selected-enemy {
+  fill: #220a0a;
+  stroke: #ff3333;
+  stroke-width: 1.2;
+}
+
+.outline {
+  fill: none;
+  stroke: #00ff88;
+  stroke-width: 1.5;
+  stroke-opacity: 0.4;
+}
+
+/* === Launch site markers === */
+.launch-site {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.launch-site.player {
+  fill: #00ccff;
+  stroke: #00ccff;
+}
+
+.launch-site.enemy {
+  fill: #ff3333;
+  stroke: #ff3333;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+.launch-site-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* === Country tooltip === */
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(10, 10, 10, 0.92);
+  border: 1px solid #00ff88;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tooltip.visible {
+  opacity: 1;
+}
+
+.tooltip .name {
+  color: #00ff88;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.tooltip .stat {
+  color: #999;
+}
+
+.tooltip .stat span {
+  color: #e0e0e0;
+}
+
+/* === Select screen === */
+#screen-select {
+  flex-direction: column;
+  gap: 20px;
+}
+
+.select-title {
+  font-size: 48px;
+  font-weight: bold;
+  color: #00ff88;
+  text-transform: uppercase;
+  letter-spacing: 8px;
+  text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+  text-align: center;
+}
+
+.select-subtitle {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  margin-top: -10px;
+}
+
+.select-panel {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 10, 0.92);
+  border: 1px solid #00ff88;
+  padding: 20px 32px;
+  text-align: center;
+  min-width: 320px;
+  z-index: 50;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.select-panel.visible {
+  opacity: 1;
+}
+
+.select-panel .country-name {
+  font-size: 24px;
+  color: #00ccff;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.select-panel .stats {
+  font-size: 13px;
+  color: #999;
+  margin-bottom: 16px;
+}
+
+.select-panel .stats span {
+  color: #e0e0e0;
+}
+
+.btn-launch {
+  background: none;
+  border: 2px solid #00ff88;
+  color: #00ff88;
+  padding: 10px 32px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-launch:hover {
+  background: #00ff88;
+  color: #0a0a0a;
+}
+
+/* === HUD === */
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.hud-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(to bottom, rgba(10, 10, 10, 0.7), transparent);
+}
+
+.hud-top .game-clock {
+  font-size: 20px;
+  color: #00ff88;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+
+.hud-top .tokens {
+  font-size: 18px;
+  color: #ffcc00;
+}
+
+.hud-top .tokens .diamond {
+  color: #ffcc00;
+}
+
+.hud-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 16px 24px;
+  background: linear-gradient(to top, rgba(10, 10, 10, 0.7), transparent);
+}
+
+.pop-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pop-bar .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #666;
+}
+
+.pop-bar .bar-outer {
+  width: 200px;
+  height: 8px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+}
+
+.pop-bar .bar-inner {
+  height: 100%;
+  transition: width 0.3s;
+}
+
+.pop-bar.player .bar-inner {
+  background: #00ccff;
+}
+
+.pop-bar.enemy .bar-inner {
+  background: #ff3333;
+}
+
+.pop-bar .value {
+  font-size: 13px;
+  color: #e0e0e0;
+}
+
+.hud-center {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: #666;
+}
+
+/* Flash effect */
+.flash-red {
+  animation: flash-red 0.3s ease-out;
+}
+
+@keyframes flash-red {
+  0% { color: #ff3333; }
+  100% { color: inherit; }
+}
+
+/* === Game Over Screen === */
+#screen-gameover {
+  flex-direction: column;
+  gap: 20px;
+  background: rgba(10, 10, 10, 0.95);
+  z-index: 200;
+}
+
+.gameover-title {
+  font-size: 48px;
+  font-weight: bold;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+}
+
+.gameover-title.victory {
+  color: #00ff88;
+  text-shadow: 0 0 30px rgba(0, 255, 136, 0.6);
+}
+
+.gameover-title.defeat {
+  color: #ff3333;
+  text-shadow: 0 0 30px rgba(255, 51, 51, 0.6);
+}
+
+.gameover-stats {
+  font-size: 14px;
+  color: #999;
+  text-align: center;
+  line-height: 2;
+}
+
+.gameover-stats span {
+  color: #e0e0e0;
+}
+
+/* === CRT Scanline overlay === */
+.crt-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+}
+
+/* === Targeting mode cursor === */
+body.targeting {
+  cursor: crosshair;
+}
+
+/* === Responsive === */
+@media (max-width: 600px) {
+  .select-title {
+    font-size: 28px;
+    letter-spacing: 4px;
+  }
+
+  .hud-top {
+    padding: 8px 12px;
+  }
+
+  .pop-bar .bar-outer {
+    width: 120px;
+  }
+}
