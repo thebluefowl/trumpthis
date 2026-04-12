@@ -21,6 +21,8 @@ import { resetResearch } from './engine/ResearchSystem.js';
 import { resetIntel } from './state/Intel.js';
 import { initSoundEngine } from './audio/SoundEngine.js';
 import { initCheats } from './ui/Cheats.js';
+import { initTutorial, startTutorial, resetTutorial } from './ui/Tutorial.js';
+import { startAutoSave, stopAutoSave, hasSave, deleteSave } from './engine/SaveLoad.js';
 import { startMusic, stopMusic, setMusicPhase } from './audio/Music.js';
 
 // Panel visibility helpers
@@ -45,6 +47,7 @@ async function init() {
   initNewsTicker();
   initSoundEngine();
   initCheats();
+  initTutorial();
 
   // Ensure globe is sized correctly
   window.dispatchEvent(new Event('resize'));
@@ -117,11 +120,15 @@ function startGame(blocId) {
   resetIntel();
   resetCombatLog();
   showNewsTicker();
+  startTutorial();
+  startAutoSave();
   startGameLoop();
 }
 
 function onGameOver({ result }) {
   stopGameLoop();
+  stopAutoSave();
+  deleteSave();
 
   if (result === 'extinction') {
     setMusicPhase('extinction');

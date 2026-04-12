@@ -10,6 +10,7 @@ import { placeBattery } from '../engine/InterceptorSystem.js';
 import { getOwnedResources } from '../engine/ResourceSystem.js';
 import { getFlightTimeMultiplier, getSupplyLineCostMultiplier, getEnemyInterceptPenalty, getNukeRadiationMultiplier, getBuildCostMultiplier, startResearch, getCurrentResearch, canResearch } from '../engine/ResearchSystem.js';
 import { TECH_DEFS } from '../state/TechTree.js';
+import { getPersonality } from './Personalities.js';
 import { proposeAlliance, breakAllianceBetween } from '../state/Diplomacy.js';
 import { events } from '../state/events.js';
 
@@ -70,21 +71,21 @@ function updateNationAI(country, dt) {
   }
 
   // === Attack logic ===
+  const personality = getPersonality(country.id);
   state.timeSinceAttack += dt * 1000;
   if (gameState.elapsed >= AI_WARMUP && state.timeSinceAttack >= state.attackCooldown && country.tokens >= 3) {
     const target = pickTarget(country);
     if (target) {
-      console.log(`[AI] ${country.name} attacking ${target.name} with ${Math.floor(country.tokens)} tokens`);
       launchAtTarget(country, target);
       state.timeSinceAttack = 0;
       const variance = 1 - AI_COOLDOWN_VARIANCE / 2 + Math.random() * AI_COOLDOWN_VARIANCE;
-      state.attackCooldown = AI_LAUNCH_COOLDOWN * variance;
+      state.attackCooldown = AI_LAUNCH_COOLDOWN * variance / personality.attackBias;
     }
   }
 
-  // === Battery placement ===
+  // === Battery placement (personality affects frequency) ===
   state.timeSinceBattery += dt * 1000;
-  if (state.timeSinceBattery >= state.batteryCooldown) {
+  if (state.timeSinceBattery >= state.batteryCooldown / personality.defenseBias) {
     tryPlaceBattery(country);
     state.timeSinceBattery = 0;
   }
@@ -110,6 +111,7 @@ function pickTarget(country) {
   let bestTarget = null;
   let bestScore = -Infinity;
 
+  const personality = getPersonality(country.id);
   const myAllies = new Set(gameState.getAllies(country.id));
 
   // What are my allies attacking? I should pile on.
@@ -141,11 +143,14 @@ function pickTarget(country) {
     const proximityBonus = Math.max(0, 40 - dist * 25);
     score += proximityBonus;
 
-    // === Weakness bonus (0-50 points) ===
-    // Prioritize weakened nations — go for the kill
-    if (popRatio < 0.3) score += 50;       // critically weak — finish them
-    else if (popRatio < 0.5) score += 30;  // wounded — press the advantage
-    else if (popRatio < 0.7) score += 10;  // slightly damaged
+    // === Weakness bonus — opportunists love weak targets ===
+    const weaknessWeight = personality.targetWeakest ? 2.0 : 1.0;
+    if (popRatio < 0.3) score += 50 * weaknessWeight;
+    else if (popRatio < 0.5) score += 30 * weaknessWeight;
+    else if (popRatio < 0.7) score += 10 * weaknessWeight;
+
+    // Rogue nations add randomness to targeting
+    if (personality.name === 'Rogue') score += Math.random() * 40;
 
     // === Alliance coordination (0-30 points) ===
     // Pile on whoever allies are already attacking
@@ -185,6 +190,7 @@ function pickTarget(country) {
 
 function pickMissileType(country, target) {
   const elapsed = gameState.elapsed;
+  const personality = getPersonality(country.id);
 
   // Filter to affordable + unlocked types
   const available = Object.entries(MISSILE_TYPES)
@@ -223,9 +229,12 @@ function pickMissileType(country, target) {
     else if (id === 'hypersonic') w = 3;
 
     if (id === 'nuke') {
-      if (country.tokens > 120 && targetPopRatio > 0.4) w = 4;
+      if (country.tokens > 120 && targetPopRatio > 0.4) w = 4 * personality.nukeBias;
       else w = 0;
     }
+
+    // Personality preferred weapons get a boost
+    if (personality.preferredWeapons.includes(id)) w *= 1.8;
 
     weights[id] = w;
   }
@@ -434,26 +443,28 @@ function tryPlaceBattery(country) {
 function evaluateDiplomacy(country) {
   const allies = gameState.getAllies(country.id);
 
-  // Consider breaking weak alliances
+  const personality = getPersonality(country.id);
+
+  // Consider breaking weak alliances — personality affects threshold
   for (const allyId of allies) {
     const rel = gameState.getRelationship(country.id, allyId);
     const allyCountry = gameState.countries.get(allyId);
     if (!allyCountry) continue;
 
-    // Break if ally is very weak and relationship is fading
     const allyStrength = allyCountry.population / allyCountry.startingPopulation;
-    if (allyStrength < 0.3 && rel < 30) {
+    if (allyStrength < 0.3 && rel < personality.betrayalThreshold) {
       breakAllianceBetween(country.id, allyId);
       return;
     }
   }
 
-  // Consider invading weakened nations
+  // Consider invading weakened nations — personality affects eagerness
   for (const other of gameState.getActiveCountries()) {
     if (other.id === country.id) continue;
     if (gameState.canInvade(country.id, other.id)) {
       const cost = gameState.getInvasionCost(country.id, other.id);
-      if (country.tokens >= cost * 1.5) { // AI invades only if comfortably affordable
+      const affordThreshold = 1.5 / personality.invasionBias; // aggressive invaders need less margin
+      if (country.tokens >= cost * affordThreshold) {
         gameState.executeInvasion(country.id, other.id);
         gameState.addNotification(`${country.name} has invaded ${other.name}!`, 'elimination');
         return;
@@ -461,13 +472,14 @@ function evaluateDiplomacy(country) {
     }
   }
 
-  // Consider proposing alliance to strong, friendly nation
+  // Consider proposing alliance — diplomatic nations seek alliances at lower thresholds
+  const allianceThreshold = REL_ALLIED_THRESHOLD + Math.round(20 / personality.diplomacyBias);
   for (const other of gameState.getActiveCountries()) {
     if (other.id === country.id) continue;
     if (gameState.isAllied(country.id, other.id)) continue;
 
     const rel = gameState.getRelationship(country.id, other.id);
-    if (rel >= REL_ALLIED_THRESHOLD + 10) {
+    if (rel >= allianceThreshold) {
       proposeAlliance(country.id, other.id);
       return;
     }

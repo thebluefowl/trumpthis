@@ -182,7 +182,13 @@ function dragBehavior() {
     });
 }
 
-export function renderPaths() {
+let lastRenderTime = 0;
+export function renderPaths(force = false) {
+  // Throttle SVG re-renders to max 10fps (expensive DOM updates)
+  const now = performance.now();
+  if (!force && now - lastRenderTime < 100) return;
+  lastRenderTime = now;
+
   const pathGenerator = getPathGenerator();
   const projection = getProjection();
   const [cx, cy] = projection.translate();

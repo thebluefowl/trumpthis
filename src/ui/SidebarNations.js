@@ -3,6 +3,7 @@ import { formatPop, renderPaths } from '../rendering/Globe.js';
 import { proposeAlliance, breakAllianceBetween, acceptAlliance } from '../state/Diplomacy.js';
 import { REL_ALLIED_THRESHOLD } from '../constants.js';
 import { isRevealed } from '../state/Intel.js';
+import { getPersonalityName } from '../ai/Personalities.js';
 
 let expandedId = null;
 
@@ -71,6 +72,7 @@ export function renderNationsTab(el) {
           <div class="sb-row"><span class="sb-row-label">Relationship</span><span class="sb-row-value" style="color:${relColor}">${c.rel > 0 ? '+' : ''}${c.rel}</span></div>
           <div class="sb-row"><span class="sb-row-label">Population</span><span class="sb-row-value">${formatPop(c.population)} (${popPct.toFixed(0)}%)</span></div>
           <div class="sb-row"><span class="sb-row-label">Tier</span><span class="sb-row-value">${c.tier}</span></div>
+          <div class="sb-row"><span class="sb-row-label">Doctrine</span><span class="sb-row-value">${getPersonalityName(c.id)}</span></div>
           <div class="sb-row"><span class="sb-row-label">Tokens</span><span class="sb-row-value">${seeTokens ? Math.floor(c.tokens) + '◆' : hidden}</span></div>
           <div class="sb-row"><span class="sb-row-label">Batteries</span><span class="sb-row-value">${batteries !== null ? batteries : hidden}</span></div>
           <div class="sb-row"><span class="sb-row-label">Missiles Out</span><span class="sb-row-value">${inFlight}</span></div>

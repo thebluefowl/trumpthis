@@ -890,6 +890,9 @@ function drawResourceNodes() {
 }
 
 // === City Lights ===
+let cityLightCache = null;
+let cityLightCacheTime = 0;
+
 function drawCityLights() {
   const now = performance.now() / 1000;
 

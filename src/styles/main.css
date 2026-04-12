@@ -792,6 +792,70 @@ body.placing { cursor: crosshair; }
   100% { opacity: 1; }
 }
 
+/* === Tutorial === */
+.tutorial-overlay {
+  position: fixed;
+  top: 50px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  pointer-events: auto;
+}
+
+.tutorial-box {
+  background: #08080e;
+  border: 1px solid var(--accent);
+  padding: 12px 20px;
+  max-width: 400px;
+}
+
+.tutorial-step {
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text-bright);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.tutorial-step kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--panel-border);
+  color: var(--text-bright);
+  padding: 1px 5px;
+}
+
+.tutorial-step b {
+  color: var(--amber);
+}
+
+.tutorial-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tutorial-progress {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.tutorial-skip {
+  background: none;
+  border: 1px solid var(--panel-border);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 8px;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+.tutorial-skip:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
 /* === Cheat Console === */
 .cheat-console {
   position: fixed;

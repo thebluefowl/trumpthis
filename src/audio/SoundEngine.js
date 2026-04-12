@@ -54,54 +54,93 @@ function playNoise(duration, volume = 0.1) {
 // === Sound effects ===
 
 function launchSound() {
-  playTone(200, 0.3, 'sawtooth', 0.15, 0.01, 0.2);
-  playTone(150, 0.5, 'sine', 0.1, 0.05, 0.3);
-  playNoise(0.2, 0.08);
+  // Rocket ignition — low rumble rising to a whoosh
+  playTone(80, 0.2, 'sawtooth', 0.12, 0.01, 0.1);
+  playTone(200, 0.4, 'sawtooth', 0.08, 0.1, 0.2);
+  playTone(400, 0.3, 'sine', 0.05, 0.15, 0.2);
+  playNoise(0.3, 0.06);
 }
 
 function impactSound() {
-  playTone(60, 0.8, 'sine', 0.3, 0.01, 0.1);
-  playTone(40, 1.2, 'sine', 0.2, 0.05, 0.1);
-  playNoise(0.6, 0.15);
+  // Deep thud + rumble + debris
+  playTone(40, 1.0, 'sine', 0.3, 0.005, 0.05);
+  playTone(55, 0.8, 'sine', 0.2, 0.01, 0.1);
+  playTone(30, 1.5, 'triangle', 0.15, 0.05, 0.1);
+  playNoise(0.8, 0.12);
+  setTimeout(() => playNoise(0.5, 0.06), 200); // secondary debris
+}
+
+function nukeImpactSound() {
+  // Massive bass + sustained roar
+  playTone(25, 2.0, 'sine', 0.35, 0.005, 0.05);
+  playTone(40, 1.5, 'sine', 0.25, 0.01, 0.1);
+  playTone(55, 1.2, 'triangle', 0.2, 0.05, 0.1);
+  playNoise(1.5, 0.2);
+  setTimeout(() => {
+    playTone(35, 1.5, 'sine', 0.15, 0.1, 0.2);
+    playNoise(1.0, 0.1);
+  }, 500);
 }
 
 function interceptSound() {
-  playTone(800, 0.15, 'sine', 0.1);
-  playTone(1200, 0.1, 'sine', 0.08, 0.01, 0.05);
+  // Sharp ascending ping — satisfying "got it"
+  playTone(600, 0.1, 'sine', 0.1, 0.005);
+  playTone(900, 0.1, 'sine', 0.08, 0.005);
+  setTimeout(() => playTone(1200, 0.15, 'sine', 0.06), 50);
 }
 
 function empSound() {
-  playTone(100, 1.0, 'square', 0.2, 0.01, 0.1);
-  playTone(50, 1.5, 'sine', 0.15, 0.1, 0.2);
-  playNoise(0.8, 0.12);
-}
-
-function allianceSound() {
-  playTone(440, 0.2, 'sine', 0.1);
-  setTimeout(() => playTone(554, 0.2, 'sine', 0.1), 100);
-  setTimeout(() => playTone(659, 0.3, 'sine', 0.1), 200);
-}
-
-function betrayalSound() {
-  playTone(300, 0.3, 'sawtooth', 0.15);
-  setTimeout(() => playTone(200, 0.4, 'sawtooth', 0.12), 150);
-}
-
-function eliminationSound() {
-  playTone(100, 1.5, 'sine', 0.25, 0.01, 0.1);
-  playNoise(1.0, 0.15);
-  setTimeout(() => playTone(80, 1.0, 'sine', 0.15), 500);
-}
-
-function escalationSound() {
-  for (let i = 0; i < 3; i++) {
-    setTimeout(() => playTone(800, 0.15, 'square', 0.15), i * 200);
+  // Electrical crackle + deep pulse
+  playTone(80, 1.2, 'square', 0.15, 0.01, 0.1);
+  playTone(40, 1.5, 'sine', 0.12, 0.1, 0.2);
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => playNoise(0.05, 0.15), i * 50 + Math.random() * 30);
   }
 }
 
-function incomingAlarm() {
-  playTone(600, 0.2, 'square', 0.1);
-  setTimeout(() => playTone(600, 0.2, 'square', 0.1), 300);
+function allianceSound() {
+  // Major chord — hopeful
+  playTone(330, 0.3, 'sine', 0.08);
+  setTimeout(() => playTone(415, 0.3, 'sine', 0.08), 80);
+  setTimeout(() => playTone(494, 0.4, 'sine', 0.08), 160);
+  setTimeout(() => playTone(660, 0.3, 'sine', 0.05), 240);
+}
+
+function betrayalSound() {
+  // Dissonant descending — ominous
+  playTone(400, 0.3, 'sawtooth', 0.12);
+  setTimeout(() => playTone(350, 0.3, 'sawtooth', 0.1), 100);
+  setTimeout(() => playTone(280, 0.4, 'sawtooth', 0.08), 200);
+  setTimeout(() => playTone(200, 0.5, 'sawtooth', 0.06), 300);
+}
+
+function eliminationSound() {
+  // Low drone + crumble
+  playTone(60, 2.0, 'sine', 0.2, 0.01, 0.1);
+  playTone(45, 1.5, 'triangle', 0.15, 0.05, 0.1);
+  playNoise(1.2, 0.12);
+  setTimeout(() => {
+    playTone(50, 1.0, 'sine', 0.1);
+    playNoise(0.8, 0.08);
+  }, 500);
+}
+
+function escalationSound() {
+  // Three urgent pings ascending
+  playTone(600, 0.12, 'square', 0.12);
+  setTimeout(() => playTone(750, 0.12, 'square', 0.12), 180);
+  setTimeout(() => playTone(900, 0.15, 'square', 0.12), 360);
+}
+
+function incomingAlarm(urgency) {
+  // Urgency: 0-1, scales volume and speed
+  const vol = 0.06 + urgency * 0.1;
+  const freq = 500 + urgency * 300;
+  playTone(freq, 0.15, 'square', vol);
+  setTimeout(() => playTone(freq, 0.15, 'square', vol), 200 - urgency * 80);
+  if (urgency > 0.7) {
+    setTimeout(() => playTone(freq, 0.15, 'square', vol), 350 - urgency * 80);
+  }
 }
 
 // === Ambient drone ===
@@ -154,20 +193,25 @@ export function initSoundEngine() {
     const isPlayerTarget = missile.toCountryId === playerId;
     const isPlayerAttack = missile.fromCountryId === playerId;
     const isAllyTarget = gameState.isAllied(playerId, missile.toCountryId);
+    const isNuke = missile.mtype?.isNuke;
 
     if (isPlayerTarget) {
-      // You're being hit — loud alarm + impact
-      if (missile.mtype?.empDuration) empSound();
+      if (isNuke) nukeImpactSound();
+      else if (missile.mtype?.empDuration) empSound();
       else impactSound();
-      incomingAlarm();
+      // Incoming alarm — urgency based on how many are inbound
+      const inbound = gameState.missiles.filter(m => m.toCountryId === playerId).length;
+      incomingAlarm(Math.min(1, inbound / 5));
     } else if (isPlayerAttack) {
-      // Your missile landed — quieter confirmation
-      playTone(300, 0.2, 'sine', 0.08);
+      if (isNuke) nukeImpactSound();
+      else playTone(300, 0.2, 'sine', 0.06);
     } else if (isAllyTarget) {
-      // Ally hit — subtle rumble
-      playTone(80, 0.3, 'sine', 0.05);
+      playTone(80, 0.3, 'sine', 0.04);
     }
-    // Other nations' impacts — silent
+    // Nukes are globally audible even if not targeting player
+    if (isNuke && !isPlayerTarget && !isPlayerAttack) {
+      playTone(30, 1.0, 'sine', 0.08);
+    }
   });
 
   events.on('launchsite:click', () => launchSound());
