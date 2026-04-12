@@ -1,20 +1,28 @@
 import { gameState } from './state/GameState.js';
 import { events } from './state/events.js';
-import { initGlobe, initLaunchSites, renderPaths, rotateTo, formatPop } from './rendering/Globe.js';
-import { initCanvas, renderCanvas } from './rendering/CanvasOverlay.js';
+import { initRelationships, resetDiplomacy } from './state/Diplomacy.js';
+import { initGlobe, initLaunchSites, initBatteries, renderPaths, rotateTo, formatPop } from './rendering/Globe.js';
+import { initCanvas } from './rendering/CanvasOverlay.js';
 import { initHUD } from './rendering/HUD.js';
-import { initScreens, showScreen, showGameOverlay } from './ui/Screens.js';
-import { initCountrySelect, resetCountrySelect } from './ui/CountrySelect.js';
+import { initCountrySelect, showCountrySelect, resetCountrySelect } from './ui/CountrySelect.js';
+import { initAlliancePicker, showAlliancePicker } from './ui/AlliancePicker.js';
 import { initLaunchUI, resetLaunchUI } from './ui/LaunchUI.js';
+import { initSidebar, renderSidebar, resetSidebar } from './ui/Sidebar.js';
+import { initCombatLog, resetCombatLog } from './ui/SidebarLog.js';
+import { initNewsTicker, showNewsTicker, hideNewsTicker, resetNewsTicker } from './ui/NewsTicker.js';
 import { startGameLoop, stopGameLoop } from './engine/GameLoop.js';
-import { resetAI } from './ai/EasyAI.js';
+import { resetAIManager } from './ai/AIManager.js';
+import { resetInterceptors } from './engine/InterceptorSystem.js';
+import { resetEscalation } from './engine/Escalation.js';
+import { resetConquest } from './engine/Conquest.js';
+import { initResources, resetResources } from './engine/ResourceSystem.js';
+import { resetResearch } from './engine/ResearchSystem.js';
+import { resetIntel } from './state/Intel.js';
+import { initSoundEngine } from './audio/SoundEngine.js';
+import { initCheats } from './ui/Cheats.js';
 
 async function init() {
-  initScreens();
-  showScreen('select');
-  showGameOverlay(false);
-
-  // Init globe
+  // Init globe in the select screen container first
   const svgEl = document.getElementById('globe');
   const canvasEl = document.getElementById('overlay');
 
@@ -22,39 +30,75 @@ async function init() {
   initCanvas(canvasEl);
   initHUD();
   initCountrySelect();
+  initAlliancePicker();
   initLaunchUI();
+  initSidebar();
+  initCombatLog();
+  initNewsTicker();
+  initSoundEngine();
+  initCheats();
 
-  // Wire up game start
-  events.on('game:start', startGame);
+  // Show title screen, hide everything else
+  document.getElementById('screen-select').classList.remove('hidden');
+  document.getElementById('screen-setup').classList.add('hidden');
+  document.getElementById('game-layout').classList.add('hidden');
 
-  // Wire up game over
+  // Title → Setup screen (country select)
+  document.getElementById('btn-start').addEventListener('click', () => {
+    document.getElementById('screen-select').classList.add('hidden');
+    document.getElementById('screen-setup').classList.remove('hidden');
+    showCountrySelect();
+    window.dispatchEvent(new Event('resize'));
+  });
+
+  // Country selected → swap sidebar to alliance picker
+  events.on('game:start', () => {
+    showAlliancePicker(gameState.playerCountryId);
+  });
+
+  // Alliance selected → start game
+  events.on('bloc:selected', (blocId) => {
+    startGame(blocId);
+  });
+
   events.on('game:over', onGameOver);
 
-  // Wire up play again
   document.getElementById('btn-play-again').addEventListener('click', restartGame);
 }
 
-function startGame() {
-  gameState.startGame(gameState.playerCountryId, gameState.aiCountryId);
+function startGame(blocId) {
+  gameState.startGame(gameState.playerCountryId, blocId);
+  initRelationships(blocId);
 
-  showScreen('select'); // keep the globe visible (it's in the select screen DOM)
-  showGameOverlay(true);
+  // Hide all pre-game screens, show game layout
+  document.getElementById('screen-select').classList.add('hidden');
+  document.getElementById('screen-setup').classList.add('hidden');
+  document.getElementById('game-layout').classList.remove('hidden');
 
-  // Hide select UI elements
-  document.querySelector('.select-title').style.display = 'none';
-  document.querySelector('.select-subtitle').style.display = 'none';
-  document.getElementById('select-panel').style.display = 'none';
-  document.getElementById('tooltip').style.display = 'none';
+  // Move globe SVG + canvas into the game layout container
+  const globeContainer = document.getElementById('globe-container');
+  const svgEl = document.getElementById('globe');
+  const canvasEl = document.getElementById('overlay');
+  globeContainer.appendChild(svgEl);
+  globeContainer.appendChild(canvasEl);
 
-  // Show HUD
-  document.getElementById('hud').style.display = '';
+  // Trigger resize so globe fills the map area
+  window.dispatchEvent(new Event('resize'));
 
-  // Init launch sites on globe
   initLaunchSites();
+  initBatteries();
   renderPaths();
 
-  // Start game loop
-  resetAI();
+  resetAIManager();
+  resetInterceptors();
+  resetDiplomacy();
+  resetEscalation();
+  resetConquest();
+  initResources();
+  resetResearch();
+  resetIntel();
+  resetCombatLog();
+  showNewsTicker();
   startGameLoop();
 }
 
@@ -64,46 +108,85 @@ function onGameOver({ result }) {
   const titleEl = document.getElementById('gameover-title');
   const statsEl = document.getElementById('gameover-stats');
 
-  if (result === 'victory') {
+  if (result === 'extinction') {
+    showExtinctionScreen();
+    return;
+  } else if (result === 'victory') {
     titleEl.textContent = 'VICTORY';
     titleEl.className = 'gameover-title victory';
   } else if (result === 'defeat') {
     titleEl.textContent = 'DEFEAT';
     titleEl.className = 'gameover-title defeat';
   } else {
-    titleEl.textContent = 'MUTUAL DESTRUCTION';
+    titleEl.textContent = 'TIME EXPIRED';
     titleEl.className = 'gameover-title defeat';
   }
 
   const player = gameState.getPlayer();
-  const ai = gameState.getAI();
   const mins = Math.floor(gameState.elapsed / 60);
   const secs = Math.floor(gameState.elapsed % 60);
 
   statsEl.innerHTML = `
     <div>Time: <span>${mins}m ${secs}s</span></div>
     <div>Missiles Launched: <span>${gameState.stats.playerLaunched}</span></div>
+    <div>Missiles Intercepted: <span>${gameState.stats.playerIntercepted}</span></div>
     <div>Damage Dealt: <span>${formatPop(gameState.stats.playerDamageDealt)}</span></div>
+    <div>Nations Eliminated: <span>${gameState.eliminated.size}</span></div>
     <div>Population Remaining: <span>${player ? formatPop(player.population) : '0'}</span></div>
-    <div>Enemy Population: <span>${ai ? formatPop(ai.population) : '0'}</span></div>
   `;
 
-  showScreen('gameover');
+  document.getElementById('screen-gameover').classList.remove('hidden');
+}
+
+function showExtinctionScreen() {
+  stopGameLoop();
+
+  const totalNukes = gameState.nuclearWinterLevel;
+  const totalDead = [...gameState.countries.values()].reduce((s, c) => s + c.startingPopulation, 0);
+  const elapsed = gameState.elapsed;
+  const mins = Math.floor(elapsed / 60);
+  const secs = Math.floor(elapsed % 60);
+
+  const statsEl = document.getElementById('extinction-stats');
+  if (statsEl) {
+    statsEl.innerHTML = `
+      GLOBAL POPULATION: 0<br>
+      NUCLEAR DETONATIONS: ${totalNukes}<br>
+      TIME TO EXTINCTION: ${mins}m ${secs}s<br>
+      NATIONS DESTROYED: ${gameState.eliminated.size} / ${gameState.countries.size}
+    `;
+  }
+
+  document.getElementById('screen-extinction').classList.remove('hidden');
+
+  document.getElementById('btn-restart').addEventListener('click', () => {
+    document.getElementById('screen-extinction').classList.add('hidden');
+    restartGame();
+  });
 }
 
 function restartGame() {
   gameState.reset();
   resetCountrySelect();
   resetLaunchUI();
+  resetSidebar();
+  resetNewsTicker();
 
-  // Restore select screen elements
-  document.querySelector('.select-title').style.display = '';
-  document.querySelector('.select-subtitle').style.display = '';
-  document.getElementById('select-panel').style.display = '';
-  document.getElementById('tooltip').style.display = '';
+  document.getElementById('screen-gameover').classList.add('hidden');
+  document.getElementById('game-layout').classList.add('hidden');
+  document.getElementById('screen-setup').classList.add('hidden');
+  document.getElementById('screen-select').classList.remove('hidden');
 
-  showScreen('select');
-  showGameOverlay(false);
+  // Move globe back to setup screen
+  const selectContainer = document.getElementById('globe-container-select');
+  const svgEl = document.getElementById('globe');
+  const canvasEl = document.getElementById('overlay');
+  if (selectContainer) {
+    selectContainer.appendChild(svgEl);
+    selectContainer.appendChild(canvasEl);
+  }
+
+  window.dispatchEvent(new Event('resize'));
   renderPaths();
 }
 

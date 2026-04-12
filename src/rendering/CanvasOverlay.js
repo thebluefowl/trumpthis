@@ -1,7 +1,11 @@
-import { COLORS, EXPLOSION_DURATION, TRAIL_FADE_TIME } from '../constants.js';
+import { COLORS, EXPLOSION_DURATION, TRAIL_FADE_TIME, INTERCEPT_TRAIL_DURATION, INTERCEPT_FLASH_DURATION, INTERCEPTOR_RANGE } from '../constants.js';
+import { getAllNodes } from '../engine/ResourceSystem.js';
+import { RESOURCE_COLORS } from '../state/Resources.js';
+import { getSatelliteAngle } from '../state/Intel.js';
 import { gameState } from '../state/GameState.js';
 import {
   getProjection,
+  getProjectionType,
   getGlobeRadius,
   getGlobeCenter,
   projectPoint,
@@ -22,8 +26,10 @@ export function initCanvas(canvasElement) {
 }
 
 function resize() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  // Size to parent container, not full viewport
+  const parent = canvas.parentElement;
+  const w = parent ? parent.clientWidth : window.innerWidth;
+  const h = parent ? parent.clientHeight : window.innerHeight;
   canvas.width = w * devicePixelRatio;
   canvas.height = h * devicePixelRatio;
   canvas.style.width = w + 'px';
@@ -38,11 +44,14 @@ export function renderCanvas(dt) {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Apply screen shake
+  // Apply screen shake — intensity decays over time
   const now = performance.now();
   if (now < shakeUntil) {
-    shakeOffset.x = (Math.random() - 0.5) * 4;
-    shakeOffset.y = (Math.random() - 0.5) * 4;
+    const remaining = shakeUntil - now;
+    const intensity = Math.min(remaining / 200, 1); // ramps up for long shakes
+    const magnitude = 4 + intensity * 12; // 4-16px shake
+    shakeOffset.x = (Math.random() - 0.5) * magnitude;
+    shakeOffset.y = (Math.random() - 0.5) * magnitude;
   } else {
     shakeOffset.x = 0;
     shakeOffset.y = 0;
@@ -51,12 +60,32 @@ export function renderCanvas(dt) {
   ctx.save();
   ctx.translate(shakeOffset.x, shakeOffset.y);
 
-  // Clip to globe circle
+  // Clip to globe circle (orthographic only)
   const [cx, cy] = getGlobeCenter();
   const radius = getGlobeRadius();
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.clip();
+  if (getProjectionType() === 'orthographic') {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+  }
+
+  // Draw interceptor range circles on player batteries
+  drawInterceptorRanges();
+
+  // Draw incoming threat lines to player
+  drawIncomingThreats();
+
+  // Draw satellite sweep line
+  drawSatelliteSweep();
+
+  // Draw resource nodes
+  drawResourceNodes();
+
+  // Draw city lights
+  drawCityLights();
+
+  // Draw battery placement preview
+  drawBatteryPreview();
 
   // Draw targeting preview line
   drawTargetingPreview();
@@ -67,8 +96,35 @@ export function renderCanvas(dt) {
   }
 
   // Draw active missiles
+  // Persistent missile debug
+  if (!window._renderCalledLogged) {
+    console.log('[CANVAS] renderCanvas called, gameState.missiles ref:', gameState.missiles, 'length:', gameState.missiles.length);
+    window._renderCalledLogged = true;
+  }
+  if (gameState.missiles.length !== (window._lastMissileCount || 0)) {
+    console.log(`[CANVAS] missiles: ${gameState.missiles.length}, canvas: ${w}x${h}, elapsed: ${gameState.elapsed.toFixed(1)}s`);
+    if (gameState.missiles.length > 0) {
+      const m = gameState.missiles[0];
+      console.log(`[CANVAS] sample: type=${m.type}, progress=${m.progress.toFixed(4)}, speed=${m.speed.toFixed(4)}, from=${m.fromCountryId}, to=${m.toCountryId}`);
+      const pos = getArcScreenPos(m, m.progress);
+      console.log(`[CANVAS] screenPos:`, pos);
+    }
+    window._lastMissileCount = gameState.missiles.length;
+  }
   for (const missile of gameState.missiles) {
     drawMissile(missile);
+  }
+
+  // Draw intercept trails
+  for (const intercept of gameState.intercepts) {
+    drawIntercept(intercept);
+  }
+
+  // Draw contamination zones
+  if (gameState.contaminations) {
+    for (const zone of gameState.contaminations) {
+      drawContamination(zone);
+    }
   }
 
   // Draw explosions
@@ -77,31 +133,46 @@ export function renderCanvas(dt) {
   }
 
   ctx.restore();
+
+  // Screen flash (drawn outside clip)
+  const now2 = performance.now();
+  if (now2 < flashUntil) {
+    const flashAlpha = ((flashUntil - now2) / 150) * 0.15;
+    ctx.fillStyle = withAlpha(flashColor, flashAlpha);
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // Nuclear winter tint — cold blue overlay that intensifies with each nuke
+  if (gameState.nuclearWinterLevel > 0) {
+    const winterAlpha = Math.min(0.25, gameState.nuclearWinterLevel * 0.04);
+    ctx.fillStyle = withAlpha('#0a1428', winterAlpha);
+    ctx.fillRect(0, 0, w, h);
+  }
 }
 
 function drawMissile(missile) {
-  const points = sampleArc(missile, 15);
-  const visiblePoints = points
-    .map(lonLat => isVisible(lonLat) ? projectPoint(lonLat) : null);
+  const trailColor = missile.mtype?.trailColor || COLORS.MISSILE_TRAIL;
+  const trailTs = sampleArcTs(missile, 15);
+  const trailPoints = trailTs.map(t => getArcScreenPos(missile, t));
 
   // Draw trail gradient
-  for (let i = 1; i < visiblePoints.length; i++) {
-    const prev = visiblePoints[i - 1];
-    const curr = visiblePoints[i];
+  for (let i = 1; i < trailPoints.length; i++) {
+    const prev = trailPoints[i - 1];
+    const curr = trailPoints[i];
     if (!prev || !curr) continue;
 
-    const alpha = (i / visiblePoints.length) * 0.8;
+    const alpha = (i / trailPoints.length) * 0.8;
     ctx.beginPath();
     ctx.moveTo(prev[0], prev[1]);
     ctx.lineTo(curr[0], curr[1]);
-    ctx.strokeStyle = withAlpha(COLORS.MISSILE_TRAIL, alpha);
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = withAlpha(trailColor, alpha);
+    ctx.lineWidth = missile.isWarhead ? 1 : 1.5;
     ctx.stroke();
   }
 
   // Draw missile head
-  const headPos = getMissileScreenPos(missile);
-  if (headPos && isVisible(missile.interpolator(missile.progress))) {
+  const headPos = getArcScreenPos(missile, missile.progress);
+  if (headPos) {
     ctx.beginPath();
     ctx.arc(headPos[0], headPos[1], 3, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
@@ -114,7 +185,7 @@ function drawMissile(missile) {
       headPos[0], headPos[1], 0,
       headPos[0], headPos[1], 6
     );
-    glow.addColorStop(0, withAlpha(COLORS.MISSILE_TRAIL, 0.6));
+    glow.addColorStop(0, withAlpha(trailColor, 0.6));
     glow.addColorStop(1, 'transparent');
     ctx.fillStyle = glow;
     ctx.fill();
@@ -145,24 +216,103 @@ function drawTrail(trail) {
 }
 
 function drawExplosion(explosion) {
+  const duration = explosion.isNuke ? 5000 : (explosion.isEMP ? EXPLOSION_DURATION : EXPLOSION_DURATION);
   const age = (gameState.elapsed - explosion.startTime) * 1000;
-  if (age > EXPLOSION_DURATION) return;
+  if (age > duration) return;
   if (!isVisible(explosion.position)) return;
 
   const pos = projectPoint(explosion.position);
   if (!pos) return;
 
-  const progress = age / EXPLOSION_DURATION;
+  const progress = age / duration;
+
+  if (explosion.isNuke) {
+    // === NUCLEAR EXPLOSION — massive, multi-phase ===
+    const maxR = explosion.maxRadius * 1.8;
+
+    // Phase 1: blinding white flash (0-10%)
+    if (progress < 0.1) {
+      const flashAlpha = 1 - progress / 0.1;
+      const flashR = maxR * 2 * easeOutQuad(progress / 0.1);
+      ctx.beginPath();
+      ctx.arc(pos[0], pos[1], flashR, 0, Math.PI * 2);
+      ctx.fillStyle = withAlpha('#ffffff', flashAlpha * 0.9);
+      ctx.fill();
+    }
+
+    // Phase 2: fireball (0-40%)
+    if (progress < 0.4) {
+      const fbProgress = progress / 0.4;
+      const fbR = maxR * easeOutQuad(fbProgress);
+      const fbAlpha = 1 - fbProgress * 0.5;
+      const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], fbR);
+      grad.addColorStop(0, withAlpha('#ffffff', fbAlpha));
+      grad.addColorStop(0.2, withAlpha('#ffcc00', fbAlpha * 0.9));
+      grad.addColorStop(0.5, withAlpha('#ff6600', fbAlpha * 0.7));
+      grad.addColorStop(0.8, withAlpha('#ff2200', fbAlpha * 0.4));
+      grad.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(pos[0], pos[1], fbR, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Phase 3: mushroom cloud ring (10-60%)
+    if (progress > 0.1 && progress < 0.6) {
+      const ringProgress = (progress - 0.1) / 0.5;
+      const ringR = maxR * (0.6 + ringProgress * 0.8);
+      const ringAlpha = (1 - ringProgress) * 0.4;
+      ctx.beginPath();
+      ctx.arc(pos[0], pos[1], ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = withAlpha('#ff4400', ringAlpha);
+      ctx.lineWidth = 3 * (1 - ringProgress);
+      ctx.stroke();
+    }
+
+    // Phase 4: lingering glow (20-100%)
+    if (progress > 0.2) {
+      const glowProgress = (progress - 0.2) / 0.8;
+      const glowR = maxR * 0.7;
+      const glowAlpha = (1 - glowProgress) * 0.3;
+      const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], glowR);
+      grad.addColorStop(0, withAlpha('#ff4400', glowAlpha));
+      grad.addColorStop(0.5, withAlpha('#991100', glowAlpha * 0.5));
+      grad.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(pos[0], pos[1], glowR, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Phase 5: outer shockwave ring (5-50%)
+    if (progress > 0.05 && progress < 0.5) {
+      const swProgress = (progress - 0.05) / 0.45;
+      const swR = maxR * 2 * easeOutQuad(swProgress);
+      const swAlpha = (1 - swProgress) * 0.2;
+      ctx.beginPath();
+      ctx.arc(pos[0], pos[1], swR, 0, Math.PI * 2);
+      ctx.strokeStyle = withAlpha('#ffaa44', swAlpha);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    return;
+  }
+
+  // === Standard explosion ===
   const currentRadius = explosion.maxRadius * easeOutQuad(Math.min(progress * 2, 1));
   const alpha = 1 - easeInQuad(progress);
+
+  const explosionColor = explosion.isEMP ? '#8844ff' : COLORS.EXPLOSION;
+  const outerColor = explosion.isEMP ? '#6622cc' : COLORS.MISSILE_TRAIL;
 
   // Outer glow
   const grad = ctx.createRadialGradient(
     pos[0], pos[1], 0,
     pos[0], pos[1], currentRadius
   );
-  grad.addColorStop(0, withAlpha(COLORS.EXPLOSION, alpha));
-  grad.addColorStop(0.4, withAlpha(COLORS.MISSILE_TRAIL, alpha * 0.6));
+  grad.addColorStop(0, withAlpha(explosionColor, alpha));
+  grad.addColorStop(0.4, withAlpha(outerColor, alpha * 0.6));
   grad.addColorStop(1, 'transparent');
 
   ctx.beginPath();
@@ -178,6 +328,13 @@ function drawExplosion(explosion) {
     ctx.fillStyle = withAlpha('#ffffff', coreAlpha * 0.8);
     ctx.fill();
   }
+}
+
+// === Battery Placement Preview ===
+let batteryPreviewPos = null;
+
+export function setBatteryPreview(pos) {
+  batteryPreviewPos = pos;
 }
 
 // === Targeting Preview ===
@@ -206,6 +363,343 @@ function drawTargetingPreview() {
   ctx.setLineDash([]);
 }
 
+// === Intercept Rendering ===
+function drawIntercept(intercept) {
+  const batteryVisible = isVisible(intercept.batteryPos);
+  if (!batteryVisible) return;
+  const bp = projectPoint(intercept.batteryPos);
+  if (!bp) return;
+
+  // Track the missile's live position if still in flight
+  let ip;
+  if (!intercept.resolved && intercept.targetMissileRef) {
+    const livePos = intercept.targetMissileRef.interpolator(intercept.targetMissileRef.progress);
+    ip = isVisible(livePos) ? projectPoint(livePos) : null;
+  }
+  if (!ip) {
+    ip = isVisible(intercept.interceptPos) ? projectPoint(intercept.interceptPos) : null;
+  }
+  if (!ip) return;
+
+  if (!intercept.resolved) {
+    const t = intercept.progress;
+    const currentX = bp[0] + (ip[0] - bp[0]) * t;
+    const currentY = bp[1] + (ip[1] - bp[1]) * t;
+
+    // Trail
+    const trailAlpha = 0.5 * (1 - t * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(bp[0], bp[1]);
+    ctx.lineTo(currentX, currentY);
+    ctx.strokeStyle = withAlpha(COLORS.INTERCEPTOR, trailAlpha);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Interceptor head — bright dot
+    ctx.beginPath();
+    ctx.arc(currentX, currentY, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.INTERCEPTOR;
+    ctx.fill();
+
+    // Small glow at head
+    const grad = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 6);
+    grad.addColorStop(0, withAlpha(COLORS.INTERCEPTOR, 0.4));
+    grad.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(currentX, currentY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  } else {
+    // === Resolved: hit flash or miss fizzle at the intercept point ===
+    const age = (gameState.elapsed - intercept.resolvedAt) * 1000;
+    const p = ip || bp;
+    if (!p) return;
+
+    if (intercept.success) {
+      const flashDuration = 400;
+      if (age < flashDuration) {
+        const progress = age / flashDuration;
+        const r = 5 + progress * 10;
+        const alpha = 1 - progress;
+
+        const grad = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r);
+        grad.addColorStop(0, withAlpha('#ffffff', alpha));
+        grad.addColorStop(0.4, withAlpha(COLORS.INTERCEPTOR, alpha * 0.5));
+        grad.addColorStop(1, 'transparent');
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+    } else {
+      const fizzleDuration = 250;
+      if (age < fizzleDuration) {
+        const alpha = 1 - age / fizzleDuration;
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], 3, 0, Math.PI * 2);
+        ctx.fillStyle = withAlpha('#ff4444', alpha * 0.4);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+// === Battery Preview ===
+function drawBatteryPreview() {
+  if (!batteryPreviewPos) return;
+  if (!isVisible(batteryPreviewPos)) return;
+
+  const pos = projectPoint(batteryPreviewPos);
+  if (!pos) return;
+
+  const [cx, cy] = getGlobeCenter();
+  const globeRadius = getGlobeRadius();
+
+  // Range circle (approximate: INTERCEPTOR_RANGE in radians → screen pixels)
+  const rangePixels = INTERCEPTOR_RANGE * globeRadius;
+
+  ctx.beginPath();
+  ctx.arc(pos[0], pos[1], rangePixels, 0, Math.PI * 2);
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = withAlpha(COLORS.PLAYER, 0.3);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Fill
+  ctx.beginPath();
+  ctx.arc(pos[0], pos[1], rangePixels, 0, Math.PI * 2);
+  ctx.fillStyle = withAlpha(COLORS.PLAYER, 0.05);
+  ctx.fill();
+
+  // Center marker
+  ctx.beginPath();
+  ctx.moveTo(pos[0] - 4, pos[1] - 3);
+  ctx.lineTo(pos[0] + 4, pos[1] - 3);
+  ctx.lineTo(pos[0], pos[1] + 5);
+  ctx.closePath();
+  ctx.fillStyle = withAlpha(COLORS.PLAYER, 0.6);
+  ctx.fill();
+}
+
+// === Contamination Zones ===
+function drawContamination(zone) {
+  if (!isVisible(zone.position)) return;
+  const pos = projectPoint(zone.position);
+  if (!pos) return;
+
+  const [cx, cy] = getGlobeCenter();
+  const globeRadius = getGlobeRadius();
+  const pixelRadius = zone.radius * globeRadius;
+  const age = gameState.elapsed - zone.startTime;
+  const remaining = zone.duration - age;
+  const pulse = 0.5 + 0.5 * Math.sin(age * 3);
+
+  // Toxic green glow
+  const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], pixelRadius);
+  grad.addColorStop(0, withAlpha('#88aa00', 0.15 * pulse));
+  grad.addColorStop(0.6, withAlpha('#556600', 0.08 * pulse));
+  grad.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(pos[0], pos[1], pixelRadius, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Dashed border
+  ctx.beginPath();
+  ctx.arc(pos[0], pos[1], pixelRadius, 0, Math.PI * 2);
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = withAlpha('#88aa00', 0.3 * pulse);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// === Interceptor Range Circles ===
+function drawInterceptorRanges() {
+  if (gameState.phase !== 'PLAYING') return;
+  const playerId = gameState.playerCountryId;
+
+  for (const battery of gameState.interceptors) {
+    if (battery.countryId !== playerId) continue;
+    if (!isVisible(battery.position)) continue;
+    const pos = projectPoint(battery.position);
+    if (!pos) return;
+
+    const globeRadius = getGlobeRadius();
+    const rangePixels = battery.range * globeRadius;
+    const onCooldown = battery.cooldownUntil > gameState.elapsed;
+
+    ctx.beginPath();
+    ctx.arc(pos[0], pos[1], rangePixels, 0, Math.PI * 2);
+    ctx.setLineDash([2, 4]);
+    ctx.strokeStyle = withAlpha(onCooldown ? '#334' : '#38bdf8', onCooldown ? 0.1 : 0.15);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// === Incoming Threat Lines ===
+function drawIncomingThreats() {
+  if (gameState.phase !== 'PLAYING') return;
+  const playerId = gameState.playerCountryId;
+
+  for (const missile of gameState.missiles) {
+    if (missile.toCountryId !== playerId) continue;
+
+    const currentPos = missile.interpolator(missile.progress);
+    if (!isVisible(currentPos) && !isVisible(missile.target)) continue;
+
+    const p1 = isVisible(currentPos) ? projectPoint(currentPos) : null;
+    const p2 = isVisible(missile.target) ? projectPoint(missile.target) : null;
+    if (!p1 && !p2) continue;
+
+    // Dashed red line from current position to target
+    if (p1 && p2) {
+      ctx.beginPath();
+      ctx.setLineDash([3, 5]);
+      ctx.moveTo(p1[0], p1[1]);
+      ctx.lineTo(p2[0], p2[1]);
+      ctx.strokeStyle = withAlpha('#dc2626', 0.25);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+}
+
+// === Satellite Sweep ===
+function drawSatelliteSweep() {
+  if (gameState.phase !== 'PLAYING') return;
+
+  const angle = getSatelliteAngle();
+  const sweepLon = angle - 180;
+
+  // Draw a faint vertical line at the satellite's longitude
+  const numPoints = 20;
+  ctx.beginPath();
+  let started = false;
+  for (let i = 0; i <= numPoints; i++) {
+    const lat = -80 + (160 * i / numPoints);
+    const lonLat = [sweepLon, lat];
+    if (!isVisible(lonLat)) continue;
+    const pos = projectPoint(lonLat);
+    if (!pos) continue;
+    if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
+    else ctx.lineTo(pos[0], pos[1]);
+  }
+  ctx.strokeStyle = 'rgba(34, 211, 238, 0.15)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Glow band
+  ctx.beginPath();
+  started = false;
+  for (let i = 0; i <= numPoints; i++) {
+    const lat = -80 + (160 * i / numPoints);
+    if (!isVisible([sweepLon, lat])) continue;
+    const pos = projectPoint([sweepLon, lat]);
+    if (!pos) continue;
+    if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
+    else ctx.lineTo(pos[0], pos[1]);
+  }
+  ctx.strokeStyle = 'rgba(34, 211, 238, 0.05)';
+  ctx.lineWidth = 20;
+  ctx.stroke();
+}
+
+// === Resource Nodes ===
+function drawResourceNodes() {
+  if (gameState.phase !== 'PLAYING') return;
+
+  const nodes = getAllNodes();
+  for (const node of nodes) {
+    if (!isVisible(node.coords)) continue;
+    const pos = projectPoint(node.coords);
+    if (!pos) continue;
+
+    const color = RESOURCE_COLORS[node.type] || '#888';
+    const isOwned = node.ownerId === gameState.playerCountryId;
+    const isAllyOwned = node.ownerId && gameState.isAllied(gameState.playerCountryId, node.ownerId);
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(pos[0], pos[1], 5, 0, Math.PI * 2);
+    ctx.strokeStyle = withAlpha(color, isOwned ? 0.9 : 0.4);
+    ctx.lineWidth = isOwned ? 1.5 : 1;
+    ctx.stroke();
+
+    // Inner fill
+    ctx.beginPath();
+    ctx.arc(pos[0], pos[1], 3, 0, Math.PI * 2);
+    ctx.fillStyle = withAlpha(color, isOwned ? 0.7 : isAllyOwned ? 0.4 : 0.2);
+    ctx.fill();
+
+    // Glow for player-owned
+    if (isOwned) {
+      const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], 10);
+      grad.addColorStop(0, withAlpha(color, 0.15));
+      grad.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(pos[0], pos[1], 10, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  }
+}
+
+// === City Lights ===
+function drawCityLights() {
+  if (gameState.phase !== 'PLAYING') return;
+
+  for (const [id, country] of gameState.countries) {
+    if (gameState.isEliminated(id)) continue;
+
+    for (const city of country.cities) {
+      if (!isVisible(city.coords)) continue;
+      const screenPos = projectPoint(city.coords);
+      if (!screenPos) continue;
+
+      const popRatio = city.startingPopulation > 0 ? city.population / city.startingPopulation : 0;
+      const brightness = city.destroyed ? 0.03 : popRatio * 0.25;
+
+      // Glow
+      const r = 1.5 + popRatio * 2;
+      const grad = ctx.createRadialGradient(
+        screenPos[0], screenPos[1], 0,
+        screenPos[0], screenPos[1], r * 2.5
+      );
+      const glowColor = city.destroyed ? '#331100' : '#ffdd88';
+      grad.addColorStop(0, withAlpha(glowColor, brightness * 0.5));
+      grad.addColorStop(1, 'transparent');
+
+      ctx.beginPath();
+      ctx.arc(screenPos[0], screenPos[1], r * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Core dot — color indicates health
+      const coreColor = city.destroyed ? '#440000' :
+        popRatio > 0.6 ? '#ffeecc' :
+        popRatio > 0.3 ? '#ffaa44' : '#ff4422';
+      ctx.beginPath();
+      ctx.arc(screenPos[0], screenPos[1], Math.max(1, r * 0.6), 0, Math.PI * 2);
+      ctx.fillStyle = withAlpha(coreColor, city.destroyed ? 0.3 : 0.8);
+      ctx.fill();
+    }
+  }
+}
+
+// === Screen Flash ===
+let flashUntil = 0;
+let flashColor = '#ffffff';
+
+export function triggerFlash(color = '#ffffff', durationMs = 150) {
+  flashUntil = performance.now() + durationMs;
+  flashColor = color;
+}
+
 // === Screen Shake ===
 export function triggerShake(durationMs = 200) {
   shakeUntil = performance.now() + durationMs;
@@ -213,14 +707,14 @@ export function triggerShake(durationMs = 200) {
 
 // === Helpers ===
 
-function sampleArc(missile, count) {
-  const points = [];
+// Returns an array of t values for the trailing portion of a missile arc
+function sampleArcTs(missile, count) {
+  const ts = [];
   const start = Math.max(0, missile.progress - 0.15);
   for (let i = 0; i < count; i++) {
-    const t = start + (missile.progress - start) * (i / (count - 1));
-    points.push(missile.interpolator(t));
+    ts.push(start + (missile.progress - start) * (i / (count - 1)));
   }
-  return points;
+  return ts;
 }
 
 export function sampleFullArc(missile, count) {
@@ -231,23 +725,13 @@ export function sampleFullArc(missile, count) {
   return points;
 }
 
-function getMissileScreenPos(missile) {
-  const lonLat = missile.interpolator(missile.progress);
+// Get screen position for any point along the arc.
+// The orthographic projection naturally curves great-circle paths into arcs,
+// so no artificial height offset is needed.
+function getArcScreenPos(missile, t) {
+  const lonLat = missile.interpolator(t);
   if (!isVisible(lonLat)) return null;
-
-  const [x, y] = projectPoint(lonLat);
-  const [cx, cy] = getGlobeCenter();
-  const radius = getGlobeRadius();
-
-  // Parabolic height offset for the "lobbed arc" look
-  const heightFactor = Math.sin(missile.progress * Math.PI);
-  const arcOffset = heightFactor * missile.arcHeight * radius * 0.3;
-
-  const dx = x - cx;
-  const dy = y - cy;
-  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-  return [x - (dx / dist) * arcOffset, y - (dy / dist) * arcOffset];
+  return projectPoint(lonLat);
 }
 
 function withAlpha(hex, alpha) {

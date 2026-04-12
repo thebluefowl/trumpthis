@@ -3,7 +3,7 @@ import { drag } from 'd3-drag';
 import { feature } from 'topojson-client';
 import versor from 'versor';
 import { COLORS } from '../constants.js';
-import { PLAYABLE_IDS, COUNTRY_MAP } from '../state/countryData.js';
+import { COUNTRIES, PLAYABLE_IDS, COUNTRY_MAP } from '../state/countryData.js';
 import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
 import {
@@ -13,12 +13,16 @@ import {
   getGlobeRadius,
   getGlobeCenter,
   resizeProjection,
+  applyZoom,
+  toggleProjection,
+  getProjectionType,
   isVisible,
   projectPoint,
   geoGraticule10,
+  geoContains,
 } from './Projection.js';
 
-let svg, countriesGroup, graticulePath, oceanCircle, outlineCircle;
+let svg, countriesGroup, graticulePath, oceanCircle, outlineCircle, labelsGroup;
 let countryFeatures = [];
 let topoData = null;
 
@@ -33,15 +37,25 @@ export async function initGlobe(svgElement) {
   const [cx, cy] = projection.translate();
   const radius = projection.scale();
 
-  // Load map data
-  const response = await fetch('/data/countries-110m.json');
-  topoData = await response.json();
-  countryFeatures = feature(topoData, topoData.objects.countries).features;
+  // Load map data (GeoJSON — India uses Survey of India official boundary)
+  const response = await fetch('/data/countries-50m.geojson');
+  const geoData = await response.json();
+  countryFeatures = geoData.features;
 
-  // Ocean background
+  // Full-size drag surface (behind everything, catches all drags including Mercator)
+  svg.append('rect')
+    .attr('class', 'drag-surface')
+    .attr('width', width).attr('height', height)
+    .attr('fill', 'transparent')
+    .style('cursor', 'grab')
+    .call(dragBehavior());
+
+  // Ocean background (visual only in orthographic — hidden in Mercator)
   oceanCircle = svg.append('circle')
     .attr('class', 'ocean')
-    .attr('cx', cx).attr('cy', cy).attr('r', radius);
+    .attr('cx', cx).attr('cy', cy)
+    .attr('r', getProjectionType() === 'mercator' ? 0 : radius)
+    .style('pointer-events', 'none');
 
   // Graticule
   graticulePath = svg.append('path')
@@ -49,7 +63,7 @@ export async function initGlobe(svgElement) {
     .attr('class', 'graticule')
     .attr('d', pathGenerator);
 
-  // Country paths
+  // Country paths — use click events (not pointerdown), no drag interference
   countriesGroup = svg.append('g').attr('class', 'countries');
   countriesGroup.selectAll('path')
     .data(countryFeatures)
@@ -65,16 +79,44 @@ export async function initGlobe(svgElement) {
     .on('mouseleave', onCountryLeave)
     .on('click', onCountryClick);
 
+  // Country name labels (playable nations only)
+  labelsGroup = svg.append('g').attr('class', 'country-labels')
+    .style('pointer-events', 'none');
+
   // Globe outline ring
   outlineCircle = svg.append('circle')
     .attr('class', 'outline')
-    .attr('cx', cx).attr('cy', cy).attr('r', radius)
+    .attr('cx', cx).attr('cy', cy)
+    .attr('r', getProjectionType() === 'mercator' ? 0 : radius)
     .style('pointer-events', 'none');
 
-  // Attach drag to SVG root — countries handle their own click/hover events
-  // D3 drag has a click distance threshold so quick clicks still fire on countries
-  svg.call(dragBehavior());
-  svg.style('cursor', 'grab');
+  // Zoom via wheel/trackpad pinch
+  svgElement.addEventListener('wheel', onWheel, { passive: false });
+
+  // Prevent browser pinch-to-zoom globally
+  document.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) e.preventDefault();
+  }, { passive: false });
+
+  // M key to toggle projection
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') {
+      onToggleProjection();
+    }
+  });
+
+  // Re-render SVG markers when batteries or launch sites change
+  events.on('battery:placed', () => renderPaths());
+
+  // Fallback click on SVG for targeting mode — catches clicks on gaps/borders/ocean
+  svgElement.addEventListener('click', (e) => {
+    const rect = svgElement.getBoundingClientRect();
+    const projection = getProjection();
+    const geoCoords = projection.invert([e.clientX - rect.left, e.clientY - rect.top]);
+    if (geoCoords) {
+      events.emit('globe:click', { geoCoords, clientX: e.clientX, clientY: e.clientY });
+    }
+  });
 
   // Listen for resize
   window.addEventListener('resize', onResize);
@@ -83,28 +125,54 @@ export async function initGlobe(svgElement) {
 }
 
 function getViewportSize() {
+  // Size to the SVG's parent container, not the full viewport
+  const parent = svg?.node()?.parentElement;
+  if (parent) {
+    const rect = parent.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  }
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
 function dragBehavior() {
   let v0, r0, q0;
+  let startPos, startRotate;
 
   return drag()
-    .clickDistance(4) // allow clicks through without triggering drag
+    .clickDistance(4)
     .on('start', function (event) {
       const projection = getProjection();
-      const point = [event.x, event.y];
-      v0 = versor.cartesian(projection.invert(point));
-      r0 = projection.rotate();
-      q0 = versor(r0);
+      if (getProjectionType() === 'mercator') {
+        startPos = [event.x, event.y];
+        startRotate = projection.rotate();
+      } else {
+        const point = [event.x, event.y];
+        v0 = versor.cartesian(projection.invert(point));
+        r0 = projection.rotate();
+        q0 = versor(r0);
+      }
     })
     .on('drag', function (event) {
       const projection = getProjection();
-      const point = [event.x, event.y];
-      const v1 = versor.cartesian(projection.rotate(r0).invert(point));
-      const q1 = versor.multiply(q0, versor.delta(v0, v1));
-      const r1 = versor.rotation(q1);
-      projection.rotate(r1);
+      if (getProjectionType() === 'mercator') {
+        // Simple pixel-to-degree panning
+        const scale = projection.scale();
+        const dx = event.x - startPos[0];
+        const dy = event.y - startPos[1];
+        const lonDelta = dx / scale * 57.3; // radians to degrees approximation
+        const latDelta = -dy / scale * 57.3;
+        projection.rotate([
+          startRotate[0] + lonDelta,
+          Math.max(-85, Math.min(85, startRotate[1] + latDelta)),
+          0,
+        ]);
+      } else {
+        const point = [event.x, event.y];
+        const v1 = versor.cartesian(projection.rotate(r0).invert(point));
+        const q1 = versor.multiply(q0, versor.delta(v0, v1));
+        const r1 = versor.rotation(q1);
+        projection.rotate(r1);
+      }
       renderPaths();
       events.emit('globe:rotated');
     });
@@ -115,6 +183,7 @@ export function renderPaths() {
   const projection = getProjection();
   const [cx, cy] = projection.translate();
   const radius = projection.scale();
+  const isMercator = getProjectionType() === 'mercator';
 
   // Update all paths
   countriesGroup.selectAll('path.country')
@@ -122,44 +191,71 @@ export function renderPaths() {
 
   graticulePath.attr('d', pathGenerator);
 
-  oceanCircle.attr('cx', cx).attr('cy', cy).attr('r', radius);
-  outlineCircle.attr('cx', cx).attr('cy', cy).attr('r', radius);
+  if (isMercator) {
+    // No ocean circle or outline in mercator — fill the whole SVG background
+    oceanCircle.attr('r', 0);
+    outlineCircle.attr('r', 0);
+  } else {
+    oceanCircle.attr('cx', cx).attr('cy', cy).attr('r', radius);
+    outlineCircle.attr('cx', cx).attr('cy', cy).attr('r', radius);
+  }
 
   // Update country styling based on game state
   updateCountryStyles();
 
   // Update launch site markers
   renderLaunchSites();
+
+  // Update battery markers
+  renderBatteries();
+
+  // Update country labels
+  renderLabels();
 }
 
 function updateCountryStyles() {
+  const playerId = gameState.playerCountryId;
+
   countriesGroup.selectAll('path.country')
     .attr('class', d => {
       const id = String(d.id);
       if (!PLAYABLE_IDS.has(id)) return 'country non-playable';
-      if (id === gameState.playerCountryId) return 'country selected-player';
-      if (id === gameState.aiCountryId) return 'country selected-enemy';
-      return 'country';
+      if (gameState.phase !== 'PLAYING') {
+        if (id === playerId) return 'country selected-player';
+        return 'country';
+      }
+      if (id === playerId) return 'country selected-player';
+      if (gameState.isEliminated(id)) return 'country non-playable';
+      if (gameState.isAllied(playerId, id)) return 'country allied';
+      const rel = gameState.getRelationship(playerId, id);
+      if (rel <= -50) return 'country hostile';
+      return 'country neutral-active';
     })
     .style('fill', d => {
       const id = String(d.id);
       const state = gameState.countries.get(id);
       if (!state) return null;
-      // Redden as population drops
+      if (gameState.phase !== 'PLAYING') return null;
+      if (gameState.isEliminated(id)) return '#0a0a0a';
+
       const pct = state.population / state.startingPopulation;
-      if (state.role === 'player') {
-        const r = Math.round(0 + (100 * (1 - pct)));
-        const g = Math.round(34 + (0 * (1 - pct)));
-        const b = Math.round(51 - (30 * (1 - pct)));
-        return `rgb(${r}, ${g}, ${b})`;
+      const damageDarken = 1 - (1 - pct) * 0.5; // darken as damaged
+
+      if (id === playerId) {
+        return `rgb(${Math.round(0 * damageDarken)}, ${Math.round(34 * damageDarken)}, ${Math.round(51 * damageDarken)})`;
       }
-      if (state.role === 'ai') {
-        const r = Math.round(34 + (80 * (1 - pct)));
-        const g = Math.round(10 - (10 * (1 - pct)));
-        const b = Math.round(10 - (10 * (1 - pct)));
-        return `rgb(${r}, ${g}, ${b})`;
+
+      if (gameState.isAllied(playerId, id)) {
+        return `rgb(${Math.round(0 * damageDarken)}, ${Math.round(25 * damageDarken)}, ${Math.round(40 * damageDarken)})`;
       }
-      return null;
+
+      const rel = gameState.getRelationship(playerId, id);
+      if (rel <= -50) {
+        return `rgb(${Math.round(40 * damageDarken)}, ${Math.round(8 * damageDarken)}, ${Math.round(8 * damageDarken)})`;
+      }
+
+      // Neutral — dim green
+      return `rgb(${Math.round(10 * damageDarken)}, ${Math.round(18 * damageDarken)}, ${Math.round(10 * damageDarken)})`;
     });
 }
 
@@ -169,6 +265,7 @@ let launchSiteGroup = null;
 export function initLaunchSites() {
   if (launchSiteGroup) launchSiteGroup.remove();
   launchSiteGroup = svg.append('g').attr('class', 'launch-sites');
+  launchSiteGroup.raise(); // ensure on top of all other SVG elements
 }
 
 export function renderLaunchSites() {
@@ -176,9 +273,11 @@ export function renderLaunchSites() {
   if (gameState.phase !== 'PLAYING') return;
 
   const sites = [];
-  for (const [id, country] of gameState.countries) {
-    for (const site of country.launchSites) {
-      sites.push({ ...site, countryId: id, role: country.role });
+  // Only show player's launch sites (other nations' sites are hidden)
+  const playerCountry = gameState.getPlayer();
+  if (playerCountry) {
+    for (const site of playerCountry.launchSites) {
+      sites.push({ ...site, countryId: playerCountry.id, role: 'player' });
     }
   }
 
@@ -190,17 +289,25 @@ export function renderLaunchSites() {
   const enter = diamonds.enter()
     .append('g')
     .attr('class', d => `launch-site ${d.role}`)
+    .style('pointer-events', 'all');
+
+  // Invisible larger hit area for easy clicking
+  enter.append('circle')
+    .attr('r', 14)
+    .attr('fill', 'transparent')
+    .attr('stroke', 'none')
+    .style('cursor', 'pointer')
     .on('click', (event, d) => {
-      event.stopPropagation();
       if (d.role === 'player' && !d.disabled) {
         events.emit('launchsite:click', d);
       }
     });
 
-  // Diamond shape
+  // Visible diamond shape (bigger)
   enter.append('path')
-    .attr('d', 'M0,-5 L3.5,0 L0,5 L-3.5,0 Z')
-    .attr('class', 'launch-site-pulse');
+    .attr('d', 'M0,-8 L5.5,0 L0,8 L-5.5,0 Z')
+    .attr('class', 'launch-site-pulse')
+    .style('pointer-events', 'none');
 
   // Update positions
   const all = enter.merge(diamonds);
@@ -221,6 +328,7 @@ const tooltip = () => document.getElementById('tooltip');
 function onCountryHover(event, d) {
   const id = String(d.id);
   if (!PLAYABLE_IDS.has(id)) return;
+  events.emit('country:hover', { id });
   if (gameState.phase === 'PLAYING') return; // no tooltips during gameplay
 
   const country = COUNTRY_MAP.get(id);
@@ -242,7 +350,8 @@ function onCountryMove(event) {
   positionTooltip(event);
 }
 
-function onCountryLeave() {
+function onCountryLeave(event, d) {
+  events.emit('country:hoverend', { id: d ? String(d.id) : null });
   const el = tooltip();
   el.classList.remove('visible');
 }
@@ -256,9 +365,17 @@ function positionTooltip(event) {
 }
 
 function onCountryClick(event, d) {
-  const id = String(d.id);
+  let id = String(d.id);
+  const projection = getProjection();
+  const svgEl = document.getElementById('globe');
+  const rect = svgEl ? svgEl.getBoundingClientRect() : { left: 0, top: 0 };
+  const geoCoords = projection.invert([event.clientX - rect.left, event.clientY - rect.top]);
+
+  // Kashmir override — clicking in PoK registers as India
+  if (geoCoords && isInKashmir(geoCoords)) id = '356';
+
   if (!PLAYABLE_IDS.has(id)) return;
-  events.emit('country:click', { id, feature: d });
+  events.emit('country:click', { id, feature: d, geoCoords });
 }
 
 // === Auto-rotate to country ===
@@ -289,14 +406,147 @@ export function rotateTo(lonLat, duration = 1000) {
   requestAnimationFrame(animate);
 }
 
+// === Projection Toggle ===
+function onToggleProjection() {
+  const type = toggleProjection();
+  // Ocean circle and outline only make sense for orthographic
+  if (type === 'mercator') {
+    oceanCircle.attr('r', 0);
+    outlineCircle.attr('r', 0);
+  }
+  renderPaths();
+  events.emit('globe:rotated');
+}
+
+export { onToggleProjection as switchProjection };
+
+// === Zoom ===
+function onWheel(e) {
+  e.preventDefault();
+  // Trackpad pinch sends ctrlKey + small deltaY; scroll wheel sends larger deltaY
+  applyZoom(e.deltaY);
+  renderPaths();
+  events.emit('globe:rotated');
+}
+
 // === Resize ===
 function onResize() {
   const { width, height } = getViewportSize();
   svg.attr('width', width).attr('height', height);
   resizeProjection(width, height);
 
+  // Resize drag surface
+  svg.select('.drag-surface').attr('width', width).attr('height', height);
+
   renderPaths();
   events.emit('globe:resized');
+}
+
+// === Country Labels ===
+function renderLabels() {
+  if (!labelsGroup) return;
+
+  const labels = COUNTRIES.map(c => ({
+    id: c.id,
+    name: c.name,
+    coords: c.centroid,
+    tier: c.tier,
+  }));
+
+  const texts = labelsGroup.selectAll('.country-label')
+    .data(labels, d => d.id);
+
+  texts.exit().remove();
+
+  const enter = texts.enter()
+    .append('text')
+    .attr('class', 'country-label')
+    .text(d => d.name)
+    .attr('text-anchor', 'middle');
+
+  const all = enter.merge(texts);
+  all
+    .attr('x', d => {
+      if (!isVisible(d.coords)) return -9999;
+      const pos = projectPoint(d.coords);
+      return pos ? pos[0] : -9999;
+    })
+    .attr('y', d => {
+      if (!isVisible(d.coords)) return -9999;
+      const pos = projectPoint(d.coords);
+      return pos ? pos[1] + 3 : -9999; // slight offset below center
+    })
+    .style('opacity', d => isVisible(d.coords) ? 1 : 0);
+}
+
+// === Battery Markers ===
+let batteryGroup = null;
+
+export function initBatteries() {
+  if (batteryGroup) batteryGroup.remove();
+  batteryGroup = svg.append('g').attr('class', 'battery-markers');
+}
+
+export function renderBatteries() {
+  if (!batteryGroup) return;
+  if (gameState.phase !== 'PLAYING') return;
+
+  const batteries = gameState.interceptors;
+
+  const markers = batteryGroup.selectAll('.battery-marker')
+    .data(batteries, d => d.id);
+
+  markers.exit().remove();
+
+  const enter = markers.enter()
+    .append('g')
+    .attr('class', d => `battery-marker ${d.role}`);
+
+  // Shield shape (inverted triangle)
+  enter.append('path')
+    .attr('d', 'M-4,-3 L4,-3 L0,5 Z')
+    .attr('class', 'battery-icon');
+
+  const all = enter.merge(markers);
+  all.attr('transform', d => {
+    if (!isVisible(d.position)) return 'translate(-9999, -9999)';
+    const [x, y] = projectPoint(d.position);
+    return `translate(${x}, ${y})`;
+  })
+    .style('opacity', d => {
+      if (!isVisible(d.position)) return 0;
+      const onCooldown = d.cooldownUntil > gameState.elapsed;
+      return onCooldown ? 0.4 : 1;
+    });
+}
+
+// === Point-in-Country Test ===
+// Kashmir/PoK override: treat the disputed region as India for gameplay
+const INDIA_KASHMIR_OVERRIDE = {
+  minLon: 73.0, maxLon: 77.5,
+  minLat: 33.5, maxLat: 37.0,
+};
+
+function isInKashmir(lonLat) {
+  return lonLat[0] >= INDIA_KASHMIR_OVERRIDE.minLon && lonLat[0] <= INDIA_KASHMIR_OVERRIDE.maxLon &&
+         lonLat[1] >= INDIA_KASHMIR_OVERRIDE.minLat && lonLat[1] <= INDIA_KASHMIR_OVERRIDE.maxLat;
+}
+
+export function isPointInCountry(lonLat, countryId) {
+  // PoK override — treat Kashmir region as India
+  if (countryId === '356' && isInKashmir(lonLat)) return true;
+
+  const feats = countryFeatures.filter(f => String(f.id) === countryId);
+  return feats.some(f => geoContains(f, lonLat));
+}
+
+// Override country click — Kashmir region clicks register as India
+export function resolveCountryAtPoint(lonLat) {
+  if (isInKashmir(lonLat)) return '356'; // India
+  for (const f of countryFeatures) {
+    if (geoContains(f, lonLat)) return String(f.id);
+  }
+  return null;
 }
 
 // === Helpers ===

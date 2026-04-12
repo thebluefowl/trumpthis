@@ -1,12 +1,15 @@
-import { MISSILE_COST, MISSILE_SPEED, AI_LAUNCH_COOLDOWN, AI_COOLDOWN_VARIANCE } from '../constants.js';
+import { MISSILE_COST, MISSILE_SPEED, AI_LAUNCH_COOLDOWN, AI_COOLDOWN_VARIANCE, AI_BATTERY_INTERVAL, INTERCEPTOR_COST } from '../constants.js';
 import { gameState } from '../state/GameState.js';
 import { createInterpolator } from '../rendering/Projection.js';
+import { placeBattery } from '../engine/InterceptorSystem.js';
 
 let timeSinceLastLaunch = 0;
+let timeSinceLastBattery = 0;
 let cooldown = AI_LAUNCH_COOLDOWN;
 
 export function resetAI() {
   timeSinceLastLaunch = 0;
+  timeSinceLastBattery = 0;
   cooldown = AI_LAUNCH_COOLDOWN;
 }
 
@@ -17,6 +20,14 @@ export function updateAI(dt) {
   const player = gameState.getPlayer();
   if (!ai || !player || ai.population <= 0 || player.population <= 0) return;
 
+  // === Battery placement ===
+  timeSinceLastBattery += dt * 1000;
+  if (timeSinceLastBattery >= AI_BATTERY_INTERVAL) {
+    tryPlaceBattery(ai);
+    timeSinceLastBattery = 0;
+  }
+
+  // === Missile launching ===
   timeSinceLastLaunch += dt * 1000;
 
   if (timeSinceLastLaunch < cooldown) return;
@@ -44,6 +55,27 @@ export function updateAI(dt) {
   // Randomize next cooldown
   const variance = 1 - AI_COOLDOWN_VARIANCE / 2 + Math.random() * AI_COOLDOWN_VARIANCE;
   cooldown = AI_LAUNCH_COOLDOWN * variance;
+}
+
+function tryPlaceBattery(ai) {
+  if (!gameState.canPlaceBattery(ai.id)) return;
+  if (ai.tokens < INTERCEPTOR_COST) return;
+
+  // Place near launch sites or centroid with some random offset
+  const positions = [
+    ai.centroid,
+    ...ai.launchSites.map(s => s.coords),
+  ];
+
+  const basePos = positions[Math.floor(Math.random() * positions.length)];
+
+  // Add small random offset (±2 degrees)
+  const offset = [
+    basePos[0] + (Math.random() - 0.5) * 4,
+    basePos[1] + (Math.random() - 0.5) * 4,
+  ];
+
+  placeBattery(ai.id, offset, 'ai');
 }
 
 function launchMissile(fromCountry, toCountry, origin, target, isPlayer) {

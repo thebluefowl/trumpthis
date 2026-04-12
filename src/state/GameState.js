@@ -1,5 +1,9 @@
-import { STARTING_TOKENS, TOKEN_CAPS } from '../constants.js';
-import { COUNTRY_MAP } from './countryData.js';
+import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES } from '../constants.js';
+import { COUNTRIES, COUNTRY_MAP } from './countryData.js';
+
+function relKey(a, b) {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
 
 class GameState {
   constructor() {
@@ -7,60 +11,77 @@ class GameState {
   }
 
   reset() {
-    this.phase = 'SELECT'; // SELECT | PLAYING | GAME_OVER
+    this.phase = 'SELECT'; // SELECT | PICK_BLOC | PLAYING | GAME_OVER
     this.playerCountryId = null;
-    this.aiCountryId = null;
+    this.playerBlocId = null;
 
     // Runtime country state keyed by country id
-    // { population, startingPopulation, tokens, tokenCap, tier, launchSites, centroid, name }
     this.countries = new Map();
 
-    this.missiles = [];    // in-flight missiles
-    this.explosions = [];  // active explosion animations
-    this.trails = [];      // fading missile trails
+    // Diplomacy
+    this.relationships = new Map(); // "id1:id2" → number (-100 to +100)
+    this.alliances = new Set();     // "id1:id2" strings (sorted pair)
+    this.eliminated = new Set();    // country IDs
+    this.proposals = [];            // { fromId, toId, timestamp }
+    this.notifications = [];        // { text, timestamp, type }
 
-    this.elapsed = 0;      // total game time in seconds
+    this.missiles = [];
+    this.explosions = [];
+    this.trails = [];
+    this.interceptors = [];
+    this.intercepts = [];
+
+    this.elapsed = 0;
     this.paused = false;
+    this.nuclearWinterLevel = 0; // increments with each nuke detonation
+    this.contaminations = [];
 
-    // Stats for game over screen
     this.stats = {
       playerLaunched: 0,
-      aiLaunched: 0,
       playerDamageDealt: 0,
-      aiDamageDealt: 0,
+      playerIntercepted: 0,
     };
   }
 
-  initCountry(countryDef, role) {
-    const tier = countryDef.tier;
-    this.countries.set(countryDef.id, {
-      id: countryDef.id,
-      name: countryDef.name,
-      tier,
-      population: countryDef.population,
-      startingPopulation: countryDef.population,
-      tokens: STARTING_TOKENS,
-      tokenCap: TOKEN_CAPS[tier],
-      launchSites: countryDef.launchSites.map(coords => ({
-        coords,
-        disabled: false,
-        disabledUntil: 0,
-      })),
-      centroid: countryDef.centroid,
-      role, // 'player' | 'ai'
-    });
+  initAllCountries() {
+    for (const def of COUNTRIES) {
+      const tier = def.tier;
+      this.countries.set(def.id, {
+        id: def.id,
+        name: def.name,
+        tier,
+        population: def.population,
+        startingPopulation: def.population,
+        tokens: STARTING_TOKENS,
+        tokenCap: TOKEN_CAPS[tier],
+        launchSites: def.launchSites.map(coords => ({
+          coords,
+          disabled: false,
+          disabledUntil: 0,
+        })),
+        cities: (def.cities || []).map(city => ({
+          name: city.name,
+          coords: city.coords,
+          population: Math.floor(def.population * city.popShare),
+          startingPopulation: Math.floor(def.population * city.popShare),
+          destroyed: false,
+        })),
+        centroid: def.centroid,
+        role: def.id === this.playerCountryId ? 'player' : 'ai',
+        combatStats: {
+          missilesLaunched: 0,
+          missilesIntercepted: 0,
+          damageDealt: 0,
+          damageTaken: 0,
+        },
+      });
+    }
   }
 
-  startGame(playerCountryId, aiCountryId) {
+  startGame(playerCountryId, blocId) {
     this.playerCountryId = playerCountryId;
-    this.aiCountryId = aiCountryId;
-
-    const playerDef = COUNTRY_MAP.get(playerCountryId);
-    const aiDef = COUNTRY_MAP.get(aiCountryId);
-
-    this.initCountry(playerDef, 'player');
-    this.initCountry(aiDef, 'ai');
-
+    this.playerBlocId = blocId;
+    this.initAllCountries();
     this.phase = 'PLAYING';
     this.elapsed = 0;
   }
@@ -69,9 +90,95 @@ class GameState {
     return this.countries.get(this.playerCountryId);
   }
 
-  getAI() {
-    return this.countries.get(this.aiCountryId);
+  // === Relationships ===
+
+  getRelationship(a, b) {
+    if (a === b) return 100;
+    return this.relationships.get(relKey(a, b)) || 0;
+  }
+
+  setRelationship(a, b, value) {
+    if (a === b) return;
+    this.relationships.set(relKey(a, b), Math.max(-100, Math.min(100, value)));
+  }
+
+  shiftRelationship(a, b, delta) {
+    const current = this.getRelationship(a, b);
+    this.setRelationship(a, b, current + delta);
+  }
+
+  // === Alliances ===
+
+  isAllied(a, b) {
+    return this.alliances.has(relKey(a, b));
+  }
+
+  formAlliance(a, b) {
+    this.alliances.add(relKey(a, b));
+  }
+
+  breakAlliance(a, b) {
+    this.alliances.delete(relKey(a, b));
+  }
+
+  getAllies(countryId) {
+    const allies = [];
+    for (const key of this.alliances) {
+      const [a, b] = key.split(':');
+      if (a === countryId) allies.push(b);
+      else if (b === countryId) allies.push(a);
+    }
+    return allies;
+  }
+
+  // === Elimination ===
+
+  isEliminated(countryId) {
+    return this.eliminated.has(countryId);
+  }
+
+  eliminateCountry(countryId) {
+    this.eliminated.add(countryId);
+    // Break all alliances with eliminated nation
+    for (const key of [...this.alliances]) {
+      const [a, b] = key.split(':');
+      if (a === countryId || b === countryId) {
+        this.alliances.delete(key);
+      }
+    }
+  }
+
+  getActiveCountries() {
+    return [...this.countries.values()].filter(c => !this.eliminated.has(c.id));
+  }
+
+  getActiveAI() {
+    return this.getActiveCountries().filter(c => c.role === 'ai');
+  }
+
+  // === Batteries ===
+
+  getBatteryCount(countryId) {
+    return this.interceptors.filter(b => b.countryId === countryId).length;
+  }
+
+  getMaxBatteries(countryId) {
+    const country = this.countries.get(countryId);
+    return country ? MAX_BATTERIES[country.tier] : 0;
+  }
+
+  canPlaceBattery(countryId) {
+    return this.getBatteryCount(countryId) < this.getMaxBatteries(countryId);
+  }
+
+  // === Notifications ===
+
+  addNotification(text, type = 'info') {
+    this.notifications.push({ text, timestamp: this.elapsed, type });
+    // Keep last 10
+    if (this.notifications.length > 10) this.notifications.shift();
   }
 }
 
 export const gameState = new GameState();
+export { relKey };

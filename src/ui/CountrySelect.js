@@ -1,66 +1,121 @@
-import { COUNTRIES, COUNTRY_MAP } from '../state/countryData.js';
+import { COUNTRIES, COUNTRY_MAP, COUNTRY_BLOC, BLOCS } from '../state/countryData.js';
 import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
 import { rotateTo, formatPop } from '../rendering/Globe.js';
 
-let selectedId = null;
-let panelEl = null;
+let sidebarEl = null;
+let listEl = null;
 
 export function initCountrySelect() {
-  panelEl = document.getElementById('select-panel');
+  sidebarEl = document.getElementById('setup-sidebar-content');
 
-  events.on('country:click', ({ id }) => {
+  events.on('country:click', (data) => {
     if (gameState.phase !== 'SELECT') return;
-    selectCountry(id);
+    data.consumed = true;
+    selectCountry(data.id);
   });
+
+  events.on('country:hover', ({ id }) => {
+    if (gameState.phase !== 'SELECT') return;
+    highlightCountry(id);
+    highlightListItem(id);
+  });
+
+  events.on('country:hoverend', () => {
+    if (gameState.phase !== 'SELECT') return;
+    clearHighlight();
+    clearListHighlight();
+  });
+}
+
+export function showCountrySelect() {
+  if (!sidebarEl) return;
+
+  const tierLabels = { 1: 'T1', 2: 'T2', 3: 'T3' };
+  const sorted = [...COUNTRIES].sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    return a.name.localeCompare(b.name);
+  });
+
+  sidebarEl.innerHTML = `
+    <div class="setup-header">
+      <div class="setup-title">SELECT NATION</div>
+    </div>
+    <div class="setup-list" id="country-list">
+      ${sorted.map(c => `
+        <div class="country-pick" data-id="${c.id}">
+          <div class="country-pick-dot t${c.tier}"></div>
+          <div class="country-pick-name">${c.name}</div>
+          <div class="country-pick-tier">${tierLabels[c.tier]}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  listEl = document.getElementById('country-list');
+
+  listEl.querySelectorAll('.country-pick').forEach(el => {
+    el.addEventListener('click', () => selectCountry(el.dataset.id));
+    el.addEventListener('mouseenter', () => {
+      highlightCountry(el.dataset.id);
+      highlightListItem(el.dataset.id);
+    });
+    el.addEventListener('mouseleave', () => {
+      clearHighlight();
+      clearListHighlight();
+    });
+  });
+}
+
+function highlightCountry(id) {
+  const svgEl = document.getElementById('globe');
+  if (!svgEl) return;
+  svgEl.querySelectorAll('.country').forEach(path => {
+    const pathId = path.getAttribute('data-id');
+    if (pathId === id) {
+      path.style.fill = '#1a2a44';
+      path.style.stroke = '#38bdf8';
+      path.style.strokeWidth = '1.2';
+    } else {
+      path.style.fill = '';
+      path.style.stroke = '';
+      path.style.strokeWidth = '';
+    }
+  });
+}
+
+function clearHighlight() {
+  const svgEl = document.getElementById('globe');
+  if (!svgEl) return;
+  svgEl.querySelectorAll('.country').forEach(path => {
+    path.style.fill = '';
+    path.style.stroke = '';
+    path.style.strokeWidth = '';
+  });
+}
+
+function highlightListItem(id) {
+  if (!listEl) return;
+  listEl.querySelectorAll('.country-pick').forEach(el => {
+    el.classList.toggle('hovered', el.dataset.id === id);
+  });
+  const item = listEl.querySelector(`.country-pick[data-id="${id}"]`);
+  if (item) item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function clearListHighlight() {
+  if (!listEl) return;
+  listEl.querySelectorAll('.country-pick').forEach(el => el.classList.remove('hovered'));
 }
 
 function selectCountry(id) {
   const country = COUNTRY_MAP.get(id);
   if (!country) return;
-
-  selectedId = id;
   gameState.playerCountryId = id;
-
-  // Auto-pick AI: pick a different country of similar tier
-  const candidates = COUNTRIES.filter(c => c.id !== id);
-  // Prefer same or adjacent tier
-  const sameTier = candidates.filter(c => c.tier === country.tier);
-  const aiCountry = sameTier.length > 0
-    ? sameTier[Math.floor(Math.random() * sameTier.length)]
-    : candidates[Math.floor(Math.random() * candidates.length)];
-
-  gameState.aiCountryId = aiCountry.id;
-
-  // Rotate globe to selected country
   rotateTo(country.centroid, 800);
-
-  // Update panel
-  const tierLabels = { 1: 'Superpower', 2: 'Major Power', 3: 'Regional Power' };
-  panelEl.innerHTML = `
-    <div class="country-name">${country.name}</div>
-    <div class="stats">
-      <div>Tier: <span>${tierLabels[country.tier]}</span></div>
-      <div>Population: <span>${formatPop(country.population)}</span></div>
-      <div>Launch Sites: <span>${country.launchSites.length}</span></div>
-    </div>
-    <div style="color: #666; font-size: 12px; margin-bottom: 12px;">
-      vs <span style="color: #ff3333;">${aiCountry.name}</span> (${tierLabels[aiCountry.tier]})
-    </div>
-    <button class="btn-launch" id="btn-start-game">LAUNCH GAME</button>
-  `;
-  panelEl.classList.add('visible');
-
-  // Bind launch button
-  document.getElementById('btn-start-game').addEventListener('click', () => {
-    events.emit('game:start');
-  });
+  events.emit('game:start');
 }
 
 export function resetCountrySelect() {
-  selectedId = null;
-  if (panelEl) {
-    panelEl.classList.remove('visible');
-    panelEl.innerHTML = '';
-  }
+  listEl = null;
 }

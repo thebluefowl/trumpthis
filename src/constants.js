@@ -11,6 +11,8 @@ export const COLORS = {
   ENEMY_DIM: '#441111',
   MISSILE_TRAIL: '#ff6600',
   EXPLOSION: '#ffcc00',
+  INTERCEPTOR: '#00ff44',
+  INTERCEPT_FLASH: '#ffffff',
   TEXT: '#e0e0e0',
   TEXT_DIM: '#666666',
   HUD_BG: 'rgba(10, 10, 10, 0.85)',
@@ -23,26 +25,244 @@ export const COLORS = {
 export const GLOBE_PADDING = 0.85; // globe fills 85% of smallest viewport dimension
 
 // === Gameplay ===
-export const STARTING_TOKENS = 50;
-export const MISSILE_COST = 10;
-export const MISSILE_SPEED = 0.12; // progress per second (0→1), ~8s flight time
-export const EXPLOSION_DURATION = 2000; // ms
-export const TRAIL_FADE_TIME = 3000; // ms
-export const DAMAGE_PER_HIT = 0.05; // 5% of current population
-export const POPULATION_SCALE = 1000; // scale real pop down for display
+export const STARTING_TOKENS = 0;
+export const PLAYER_TOKEN_BONUS = 1.0; // same rate as AI — no advantage
+export const LAUNCH_SITE_COOLDOWN = 6; // seconds between launches from the same site
+export const LAUNCH_SITE_COST = 25;   // tokens to build a new silo
+export const MAX_LAUNCH_SITES = {
+  1: 6, // Superpower
+  2: 5, // Major power
+  3: 4, // Regional power
+};
+export const EXPLOSION_DURATION = 3000; // ms — longer, more dramatic
+export const TRAIL_FADE_TIME = 4000; // ms
+export const POPULATION_SCALE = 1000;
+
+// === Missile Types ===
+// Progressive unlock. Each weapon has a clear role.
+// Damage is % of target city population per hit.
+export const MISSILE_TYPES = {
+  drone: {
+    name: 'Drone',         // SCOUT / HARASS
+    key: '0',
+    unlockAt: 0,
+    cost: 3,
+    baseFlight: 7,         // slow loiter
+    distFactor: 4,
+    damage: 0.02,
+    autoIntercept: 0.80,   // easy to shoot down
+    manualIntercept: 0.95,
+    blastRadius: 8,
+    trailColor: '#66cccc',
+    isDrone: true,
+    description: 'Cheap scout. Easy to intercept. Targets infrastructure.',
+  },
+  tactical: {
+    name: 'Tactical',       // FAST STRIKE
+    key: '1',
+    unlockAt: 0,
+    cost: 6,
+    baseFlight: 2.5,
+    distFactor: 2,
+    damage: 0.05,
+    autoIntercept: 0.70,
+    manualIntercept: 0.90,
+    blastRadius: 18,
+    trailColor: '#ffaa00',
+    description: 'Fast, cheap. Good for probing defenses.',
+  },
+  cruise: {
+    name: 'Cruise',          // RELIABLE DAMAGE
+    key: '2',
+    unlockAt: 30,
+    cost: 12,
+    baseFlight: 5,
+    distFactor: 3,
+    damage: 0.08,
+    autoIntercept: 0.45,    // flies low — hard to catch
+    manualIntercept: 0.70,
+    blastRadius: 28,
+    trailColor: '#ff8800',
+    description: 'Flies low. Hard to intercept. Reliable damage.',
+  },
+  decoy: {
+    name: 'Decoy Swarm',    // DEFENSE SATURATION
+    key: '9',
+    unlockAt: 45,
+    cost: 8,
+    baseFlight: 5,
+    distFactor: 3,
+    damage: 0,
+    autoIntercept: 0.70,
+    manualIntercept: 0.90,
+    blastRadius: 5,
+    trailColor: '#ff6600',
+    decoyCount: 5,
+    description: 'Spawns 5 fakes. Wastes enemy interceptors.',
+  },
+  icbm: {
+    name: 'ICBM',           // WORKHORSE
+    key: '3',
+    unlockAt: 60,
+    cost: 20,
+    baseFlight: 6,
+    distFactor: 4,
+    damage: 0.12,
+    autoIntercept: 0.55,
+    manualIntercept: 0.80,
+    blastRadius: 40,
+    trailColor: '#ff6600',
+    description: 'Standard heavy missile. The workhorse.',
+  },
+  dirty_bomb: {
+    name: 'Dirty Bomb',     // AREA DENIAL
+    key: '8',
+    unlockAt: 90,
+    cost: 10,
+    baseFlight: 5,
+    distFactor: 3,
+    damage: 0.03,
+    autoIntercept: 0.60,
+    manualIntercept: 0.85,
+    blastRadius: 22,
+    trailColor: '#88aa00',
+    contamination: true,
+    contaminationDuration: 45,
+    contaminationDamage: 0.008,  // 0.8% per second for 45s = ~36% total to nearby cities
+    description: 'Low blast + toxic zone for 45s. Area denial.',
+  },
+  emp: {
+    name: 'EMP',             // DEFENSE SUPPRESSION
+    key: '5',
+    unlockAt: 120,
+    cost: 16,
+    baseFlight: 3.5,
+    distFactor: 3,
+    damage: 0,
+    autoIntercept: 0.55,
+    manualIntercept: 0.80,
+    blastRadius: 50,
+    trailColor: '#8844ff',
+    empDuration: 25,
+    description: 'Disables interceptors for 25s. The SEAD opener.',
+  },
+  mirv: {
+    name: 'MIRV',            // OVERWHELMING FORCE
+    key: '4',
+    unlockAt: 180,
+    cost: 40,
+    baseFlight: 7,
+    distFactor: 5,
+    damage: 0.08,            // ×4 warheads = 32% if all land
+    warheads: 4,
+    splitAt: 0.7,
+    autoIntercept: 0.30,
+    manualIntercept: 0.55,
+    blastRadius: 30,
+    trailColor: '#ff4400',
+    description: 'Splits into 4 warheads. Overwhelms defenses.',
+  },
+  slbm: {
+    name: 'SLBM',            // STEALTH STRIKE
+    key: '7',
+    unlockAt: 240,
+    cost: 25,
+    baseFlight: 5,
+    distFactor: 2,
+    damage: 0.10,
+    autoIntercept: 0.50,
+    manualIntercept: 0.75,
+    blastRadius: 35,
+    trailColor: '#2288ff',
+    launchFromOcean: true,
+    description: 'Submarine-launched. No supply line cost. Stealth.',
+  },
+  hypersonic: {
+    name: 'Hypersonic',      // UNSTOPPABLE
+    key: '6',
+    unlockAt: 300,
+    cost: 35,
+    baseFlight: 1.5,
+    distFactor: 1,
+    damage: 0.10,
+    autoIntercept: 0.15,     // nearly impossible to stop
+    manualIntercept: 0.35,
+    blastRadius: 30,
+    trailColor: '#ff2266',
+    description: 'Blazing fast. Nearly uninterceptable.',
+  },
+  nuke: {
+    name: 'NUCLEAR',         // ENDGAME
+    key: 'n',
+    unlockAt: 480,
+    cost: 75,
+    baseFlight: 8,
+    distFactor: 4,
+    damage: 0.50,            // half a city in one hit
+    autoIntercept: 0.45,
+    manualIntercept: 0.70,
+    blastRadius: 80,
+    trailColor: '#ff0000',
+    contamination: true,
+    contaminationDuration: 90,
+    contaminationDamage: 0.015, // 1.5%/s for 90s on nearby cities
+    isNuke: true,
+    description: 'Endgame. 50% city damage + 90s radiation. Changes everything.',
+  },
+};
+
+export const DEFAULT_MISSILE_TYPE = 'icbm';
+
+// === Escalation ===
+export const ESCALATION_START = 900;       // 15 minutes — longer build-up
+export const ESCALATION_INTERVAL = 90;     // 1.5 min per tick
+export const ESCALATION_TICKS = 5;
+export const MATCH_TIMEOUT = 1500;         // 25 minutes
 
 // === Token Economy ===
 export const TOKEN_RATES = {
-  1: 5, // Superpower: 5 tokens/sec
+  1: 1.5, // Superpower
+  2: 1.2, // Major power
+  3: 0.9, // Regional power
+};
+export const TOKEN_CAPS = {
+  1: 200,
+  2: 150,
+  3: 100,
+};
+
+// === Diplomacy ===
+export const REL_ALLIED_THRESHOLD = 50;    // ≥50 = can form alliance
+export const REL_HOSTILE_THRESHOLD = -50;  // ≤-50 = actively hostile
+export const REL_ALLIANCE_BREAK = -20;     // alliance auto-breaks below this
+export const REL_ATTACK_PENALTY = -40;     // relationship hit when you attack someone
+export const REL_ATTACK_ALLY_PENALTY = -15;// hit with their allies when you attack
+export const REL_ALLIANCE_BONUS = 50;      // bonus when alliance formed
+export const REL_BREAK_PENALTY = -60;      // penalty when alliance broken
+export const REL_BREAK_ALLY_PENALTY = -20; // penalty with their other allies
+export const REL_DRIFT_RATE = 1;           // +1 per 30s for allies
+export const REL_DRIFT_INTERVAL = 30;      // seconds
+export const REL_SAME_BLOC_START = 70;     // starting relationship within same bloc
+export const REL_CROSS_BLOC_START = -60;   // starting relationship across hostile blocs
+export const REL_NEUTRAL_START = -5;       // default starting relationship (slightly tense)
+export const AI_SURRENDER_THRESHOLD = 0.15;// AI surrenders at 15% population
+
+// === Interceptors ===
+export const INTERCEPTOR_COST = 12; // tokens to place a battery — real investment
+export const INTERCEPTOR_RANGE = 0.12; // radians (~760km) — tighter coverage, forces more batteries
+export const INTERCEPTOR_COOLDOWN = 8; // seconds between shots — can't stop rapid fire
+export const INTERCEPT_AUTO_SUCCESS = 0.60; // 60% auto-intercept
+export const INTERCEPT_MANUAL_SUCCESS = 0.85; // 85% manual intercept
+export const INTERCEPT_TRAIL_DURATION = 500; // ms
+export const INTERCEPT_FLASH_DURATION = 400; // ms
+export const MAX_BATTERIES = {
+  1: 5, // Superpower
   2: 4, // Major power
   3: 3, // Regional power
 };
-export const TOKEN_CAPS = {
-  1: 150,
-  2: 100,
-  3: 75,
-};
 
 // === AI ===
-export const AI_LAUNCH_COOLDOWN = 8000; // ms between AI launches (Easy)
-export const AI_COOLDOWN_VARIANCE = 0.6; // ±60% randomness
+export const AI_WARMUP = 0; // no grace period — war starts immediately
+export const AI_LAUNCH_COOLDOWN = 20000; // ms — AI fires every ~20s
+export const AI_COOLDOWN_VARIANCE = 0.4; // ±40% randomness (12-28s)
+export const AI_BATTERY_INTERVAL = 25000; // ms
