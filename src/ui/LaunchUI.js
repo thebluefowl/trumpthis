@@ -196,13 +196,9 @@ export function initLaunchUI() {
       }
 
       const player = gameState.getPlayer();
-      const maxSites = MAX_LAUNCH_SITES[player.tier] || 4;
-      if (player.launchSites.length >= maxSites) {
-        showToast(`Silo limit reached (${maxSites}/${maxSites})`, 'warn');
-        return;
-      }
-
-      const siloCost = Math.ceil(LAUNCH_SITE_COST * getBuildCostMultiplier(gameState.playerCountryId));
+      // No cap — cost scales linearly like batteries
+      const siloCount = player.launchSites.length;
+      const siloCost = Math.ceil((15 + siloCount * 3) * getBuildCostMultiplier(gameState.playerCountryId));
       if (player.tokens < siloCost) {
         showToast(`Not enough tokens — need ${siloCost}◆`, 'warn');
         return;
@@ -254,12 +250,8 @@ function enterAttackMode() {
 function enterSiloMode() {
   const player = gameState.getPlayer();
   if (!player) return;
-  const maxSites = MAX_LAUNCH_SITES[player.tier] || 4;
-  if (player.launchSites.length >= maxSites) {
-    showToast(`Silo limit reached (${maxSites}/${maxSites})`, 'warn');
-    return;
-  }
-  const siloCost = Math.ceil(LAUNCH_SITE_COST * getBuildCostMultiplier(gameState.playerCountryId));
+  const siloCount = player.launchSites.length;
+  const siloCost = Math.ceil((15 + siloCount * 3) * getBuildCostMultiplier(gameState.playerCountryId));
   if (player.tokens < siloCost) {
     showToast(`Not enough tokens — need ${siloCost}◆`, 'warn');
     return;
@@ -268,7 +260,7 @@ function enterSiloMode() {
   mode = 'BUILDING_SILO';
   targetingStartedAt = performance.now();
   document.body.classList.add('placing');
-  showToast(`Click your territory to build silo (${siloCost}◆)`, 'info');
+  showToast(`Click to build silo (${siloCost}◆)`, 'info');
 }
 
 function enterBatteryMode() {

@@ -448,6 +448,19 @@ function evaluateDiplomacy(country) {
     }
   }
 
+  // Consider invading weakened nations
+  for (const other of gameState.getActiveCountries()) {
+    if (other.id === country.id) continue;
+    if (gameState.canInvade(country.id, other.id)) {
+      const cost = gameState.getInvasionCost(country.id, other.id);
+      if (country.tokens >= cost * 1.5) { // AI invades only if comfortably affordable
+        gameState.executeInvasion(country.id, other.id);
+        gameState.addNotification(`${country.name} has invaded ${other.name}!`, 'elimination');
+        return;
+      }
+    }
+  }
+
   // Consider proposing alliance to strong, friendly nation
   for (const other of gameState.getActiveCountries()) {
     if (other.id === country.id) continue;
@@ -508,7 +521,8 @@ export function createMissile(fromId, toId, origin, target, typeKey, isPlayer) {
   if (fromCountry) {
     for (const site of fromCountry.launchSites) {
       if (site.coords[0] === origin[0] && site.coords[1] === origin[1]) {
-        site.disabledUntil = Math.max(site.disabledUntil || 0, gameState.elapsed + LAUNCH_SITE_COOLDOWN);
+        const cooldown = mtype.siteCooldown || LAUNCH_SITE_COOLDOWN;
+        site.disabledUntil = Math.max(site.disabledUntil || 0, gameState.elapsed + cooldown);
         site.disabled = true;
         break;
       }

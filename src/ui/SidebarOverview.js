@@ -2,7 +2,7 @@ import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
 import { COUNTRY_MAP, COUNTRY_BLOC, BLOCS } from '../state/countryData.js';
 import { formatPop } from '../rendering/Globe.js';
-import { TOKEN_RATES } from '../constants.js';
+import { TOKEN_RATES, ECONOMIC_VICTORY_TOKENS, DIPLOMATIC_VICTORY_PERCENT } from '../constants.js';
 import { getTokenMultiplier, isEscalationActive, getTimeRemaining, getEscalationTick } from '../engine/Escalation.js';
 
 export function renderOverviewTab(el) {
@@ -67,6 +67,28 @@ export function renderOverviewTab(el) {
       <div class="sb-row"><span class="sb-row-label">Intercepted</span><span class="sb-row-value">${player.combatStats.missilesIntercepted}</span></div>
       <div class="sb-row"><span class="sb-row-label">Damage Dealt</span><span class="sb-row-value">${formatPop(player.combatStats.damageDealt)}</span></div>
       <div class="sb-row"><span class="sb-row-label">Damage Taken</span><span class="sb-row-value">${formatPop(player.combatStats.damageTaken)}</span></div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-section-title">Victory Progress</div>
+      ${(() => {
+        const activeNations = gameState.getActiveCountries();
+        const allyCount = allies.filter(id => !gameState.isEliminated(id)).length;
+        const totalActive = activeNations.length;
+        const enemyCount = activeNations.filter(c => c.id !== player.id && !gameState.isAllied(player.id, c.id)).length;
+
+        const econPct = Math.min(100, (player.tokens / ECONOMIC_VICTORY_TOKENS * 100)).toFixed(0);
+        const diploPct = totalActive > 1 ? Math.min(100, (allyCount / (totalActive - 1) * 100 / DIPLOMATIC_VICTORY_PERCENT * 100 / 100)).toFixed(0) : 0;
+        const militaryText = `${enemyCount} enemies remaining`;
+
+        return `
+          <div class="sb-row"><span class="sb-row-label">Military</span><span class="sb-row-value">${militaryText}</span></div>
+          <div class="sb-row"><span class="sb-row-label">Economic</span><span class="sb-row-value" style="color:${econPct >= 100 ? 'var(--green-bright)' : 'var(--gold)'}">${econPct}% (${Math.floor(player.tokens)}/${ECONOMIC_VICTORY_TOKENS}◆)</span></div>
+          <div class="sb-bar"><div class="sb-bar-fill gold" style="width:${econPct}%"></div></div>
+          <div class="sb-row"><span class="sb-row-label">Diplomatic</span><span class="sb-row-value" style="color:${diploPct >= 100 ? 'var(--green-bright)' : 'var(--cyan)'}">${allyCount}/${Math.ceil((totalActive - 1) * DIPLOMATIC_VICTORY_PERCENT)} allies needed</span></div>
+          <div class="sb-bar"><div class="sb-bar-fill cyan" style="width:${Math.min(100, diploPct)}%"></div></div>
+        `;
+      })()}
     </div>
 
     <div class="sb-section">

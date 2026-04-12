@@ -17,6 +17,7 @@ import { updateResearch } from './ResearchSystem.js';
 import { updateSatellite, cleanupIntel } from '../state/Intel.js';
 import { updateConquest, openClaimWindow } from './Conquest.js';
 import { events } from '../state/events.js';
+import { ECONOMIC_VICTORY_TOKENS, DIPLOMATIC_VICTORY_PERCENT } from '../constants.js';
 
 let lastTime = 0;
 let running = false;
@@ -72,7 +73,7 @@ function tick(currentTime) {
 }
 
 function checkGameOver() {
-  // MAD protocol — check if all life is extinguished
+  // MAD protocol
   if (gameState._madActive) {
     const globalPop = [...gameState.countries.values()].reduce((s, c) => s + c.population, 0);
     if (globalPop <= 0) {
@@ -93,15 +94,31 @@ function checkGameOver() {
     return;
   }
 
-  // Check if player (and allies) are the only ones left
   const activeNations = gameState.getActiveCountries();
   const playerAllies = gameState.getAllies(player.id);
   const playerSide = new Set([player.id, ...playerAllies]);
-
   const enemies = activeNations.filter(c => !playerSide.has(c.id));
 
+  // === MILITARY VICTORY — all enemies eliminated ===
   if (enemies.length === 0) {
     gameState.phase = 'GAME_OVER';
-    events.emit('game:over', { result: 'victory' });
+    events.emit('game:over', { result: 'military_victory' });
+    return;
+  }
+
+  // === ECONOMIC VICTORY — accumulate enough tokens ===
+  if (player.tokens >= ECONOMIC_VICTORY_TOKENS) {
+    gameState.phase = 'GAME_OVER';
+    events.emit('game:over', { result: 'economic_victory' });
+    return;
+  }
+
+  // === DIPLOMATIC VICTORY — ally with 60%+ of surviving nations ===
+  const allyCount = playerAllies.filter(id => !gameState.isEliminated(id)).length;
+  const totalActive = activeNations.length;
+  if (totalActive > 2 && allyCount / (totalActive - 1) >= DIPLOMATIC_VICTORY_PERCENT) {
+    gameState.phase = 'GAME_OVER';
+    events.emit('game:over', { result: 'diplomatic_victory' });
+    return;
   }
 }

@@ -1,4 +1,5 @@
 import { gameState } from './GameState.js';
+import { hasSignalIntel, hasTotalAwareness, getSatelliteScanMultiplier } from '../engine/ResearchSystem.js';
 
 // Tracks what the player has revealed about enemy nations
 // key: "countryId:type" → expiry time (gameState.elapsed)
@@ -17,10 +18,22 @@ export function revealAll(countryId) {
 }
 
 export function isRevealed(countryId, type) {
-  // Always see your own and allies' intel
-  if (countryId === gameState.playerCountryId) return true;
-  if (gameState.isAllied(gameState.playerCountryId, countryId)) return true;
+  const playerId = gameState.playerCountryId;
 
+  // Always see your own and allies' intel
+  if (countryId === playerId) return true;
+  if (gameState.isAllied(playerId, countryId)) return true;
+
+  // Tech: Total Domain Awareness — see everything permanently
+  if (hasTotalAwareness(playerId)) return true;
+
+  // Tech: SIGINT — always reveals batteries
+  if (type === 'batteries' && hasSignalIntel(playerId)) return true;
+
+  // Tech: Satellite Constellation — also reveals tokens
+  if (type === 'tokens' && getSatelliteScanMultiplier(playerId) >= 2) return true;
+
+  // Time-limited reveal from satellite sweep or spy actions
   const key = `${countryId}:${type}`;
   const expiry = revealed.get(key);
   if (!expiry) return false;

@@ -27,7 +27,7 @@ export const GLOBE_PADDING = 0.85; // globe fills 85% of smallest viewport dimen
 // === Gameplay ===
 export const STARTING_TOKENS = 0;
 export const PLAYER_TOKEN_BONUS = 1.0; // same rate as AI — no advantage
-export const LAUNCH_SITE_COOLDOWN = 6; // seconds between launches from the same site
+export const LAUNCH_SITE_COOLDOWN = 6; // default fallback
 export const LAUNCH_SITE_COST = 25;   // tokens to build a new silo
 export const MAX_LAUNCH_SITES = {
   1: 6, // Superpower
@@ -56,6 +56,7 @@ export const MISSILE_TYPES = {
     trailColor: '#66cccc',
     isDrone: true,
     description: 'Cheap scout. Easy to intercept. Targets infrastructure.',
+    siteCooldown: 1,
   },
   tactical: {
     name: 'Tactical',       // FAST STRIKE
@@ -70,6 +71,7 @@ export const MISSILE_TYPES = {
     blastRadius: 18,
     trailColor: '#ffaa00',
     description: 'Fast, cheap. Good for probing defenses.',
+    siteCooldown: 3,
   },
   cruise: {
     name: 'Cruise',          // RELIABLE DAMAGE
@@ -84,6 +86,7 @@ export const MISSILE_TYPES = {
     blastRadius: 28,
     trailColor: '#ff8800',
     description: 'Flies low. Hard to intercept. Reliable damage.',
+    siteCooldown: 5,
   },
   decoy: {
     name: 'Decoy Swarm',    // DEFENSE SATURATION
@@ -99,6 +102,7 @@ export const MISSILE_TYPES = {
     trailColor: '#ff6600',
     decoyCount: 5,
     description: 'Spawns 5 fakes. Wastes enemy interceptors.',
+    siteCooldown: 2,
   },
   icbm: {
     name: 'ICBM',           // WORKHORSE
@@ -113,6 +117,7 @@ export const MISSILE_TYPES = {
     blastRadius: 40,
     trailColor: '#ff6600',
     description: 'Standard heavy missile. The workhorse.',
+    siteCooldown: 8,
   },
   dirty_bomb: {
     name: 'Dirty Bomb',     // AREA DENIAL
@@ -130,6 +135,7 @@ export const MISSILE_TYPES = {
     contaminationDuration: 45,
     contaminationDamage: 0.008,  // 0.8% per second for 45s = ~36% total to nearby cities
     description: 'Low blast + toxic zone for 45s. Area denial.',
+    siteCooldown: 6,
   },
   emp: {
     name: 'EMP',             // DEFENSE SUPPRESSION
@@ -145,6 +151,7 @@ export const MISSILE_TYPES = {
     trailColor: '#8844ff',
     empDuration: 25,
     description: 'Disables interceptors for 25s. The SEAD opener.',
+    siteCooldown: 5,
   },
   mirv: {
     name: 'MIRV',            // OVERWHELMING FORCE
@@ -161,6 +168,7 @@ export const MISSILE_TYPES = {
     blastRadius: 30,
     trailColor: '#ff4400',
     description: 'Splits into 4 warheads. Overwhelms defenses.',
+    siteCooldown: 10,
   },
   slbm: {
     name: 'SLBM',            // STEALTH STRIKE
@@ -176,6 +184,7 @@ export const MISSILE_TYPES = {
     trailColor: '#2288ff',
     launchFromOcean: true,
     description: 'Submarine-launched. No supply line cost. Stealth.',
+    siteCooldown: 8,
   },
   hypersonic: {
     name: 'Hypersonic',      // UNSTOPPABLE
@@ -190,6 +199,7 @@ export const MISSILE_TYPES = {
     blastRadius: 30,
     trailColor: '#ff2266',
     description: 'Blazing fast. Nearly uninterceptable.',
+    siteCooldown: 7,
   },
   nuke: {
     name: 'NUCLEAR',         // ENDGAME
@@ -208,10 +218,15 @@ export const MISSILE_TYPES = {
     contaminationDamage: 0.015, // 1.5%/s for 90s on nearby cities
     isNuke: true,
     description: 'Endgame. 50% city damage + 90s radiation. Changes everything.',
+    siteCooldown: 15,
   },
 };
 
 export const DEFAULT_MISSILE_TYPE = 'icbm';
+
+// === Victory Conditions ===
+export const ECONOMIC_VICTORY_TOKENS = 500;     // accumulate this many tokens at once
+export const DIPLOMATIC_VICTORY_PERCENT = 0.6;  // ally with 60% of surviving nations
 
 // === Escalation ===
 export const ESCALATION_START = 900;       // 15 minutes — longer build-up
@@ -246,6 +261,8 @@ export const REL_SAME_BLOC_START = 70;     // starting relationship within same 
 export const REL_CROSS_BLOC_START = -60;   // starting relationship across hostile blocs
 export const REL_NEUTRAL_START = -5;       // default starting relationship (slightly tense)
 export const AI_SURRENDER_THRESHOLD = 0.15;// AI surrenders at 15% population
+export const INVASION_THRESHOLD = 0.25;    // can invade below 25% population
+export const INVASION_BASE_COST = 40;      // base token cost to invade
 
 // === Interceptors ===
 export const INTERCEPTOR_COST = 12; // tokens to place a battery — real investment

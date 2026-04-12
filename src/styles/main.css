@@ -321,6 +321,7 @@ html, body {
 .gameover-title { font-family: var(--mono); font-size: 32px; font-weight: 700; letter-spacing: 6px; }
 .gameover-title.victory { color: var(--green-bright); }
 .gameover-title.defeat { color: var(--red); }
+.gameover-subtitle { font-family: var(--font); font-size: 13px; color: var(--text-dim); text-align: center; margin-bottom: 12px; }
 .gameover-stats { font-family: var(--mono); font-size: 11px; color: var(--text-dim); text-align: center; line-height: 2.2; }
 .gameover-stats span { color: var(--text-bright); }
 
@@ -512,7 +513,7 @@ html, body {
 .news-ticker {
   display: flex; align-items: center;
   height: 26px; background: #0a0a0e;
-  border-top: 1px solid #0e0e14;
+  border-top: 1px solid var(--panel-border);
   overflow: hidden; flex-shrink: 0;
 }
 .ticker-label {

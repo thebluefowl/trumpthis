@@ -132,16 +132,27 @@ function onGameOver({ result }) {
   const titleEl = document.getElementById('gameover-title');
   const statsEl = document.getElementById('gameover-stats');
 
-  if (result === 'victory') {
-    titleEl.textContent = 'VICTORY';
-    titleEl.className = 'gameover-title victory';
-  } else if (result === 'defeat') {
-    titleEl.textContent = 'DEFEAT';
-    titleEl.className = 'gameover-title defeat';
-  } else {
-    titleEl.textContent = 'TIME EXPIRED';
-    titleEl.className = 'gameover-title defeat';
+  const victoryTypes = {
+    military_victory: { title: 'MILITARY VICTORY', subtitle: 'All enemies eliminated. Total domination achieved.', css: 'victory' },
+    economic_victory: { title: 'ECONOMIC VICTORY', subtitle: 'Economic supremacy established. Your war machine is unstoppable.', css: 'victory' },
+    diplomatic_victory: { title: 'DIPLOMATIC VICTORY', subtitle: 'The world united under your leadership. Peace through strength.', css: 'victory' },
+    defeat: { title: 'DEFEAT', subtitle: 'Your nation has fallen. The world moves on without you.', css: 'defeat' },
+    timeout: { title: 'TIME EXPIRED', subtitle: 'The clock ran out. No clear victor emerged from the ashes.', css: 'defeat' },
+  };
+
+  const vType = victoryTypes[result] || victoryTypes.defeat;
+  titleEl.textContent = vType.title;
+  titleEl.className = `gameover-title ${vType.css}`;
+
+  // Add subtitle
+  let subtitleEl = document.getElementById('gameover-subtitle');
+  if (!subtitleEl) {
+    subtitleEl = document.createElement('div');
+    subtitleEl.id = 'gameover-subtitle';
+    subtitleEl.className = 'gameover-subtitle';
+    titleEl.parentNode.insertBefore(subtitleEl, titleEl.nextSibling);
   }
+  subtitleEl.textContent = vType.subtitle;
 
   const player = gameState.getPlayer();
   const mins = Math.floor(gameState.elapsed / 60);

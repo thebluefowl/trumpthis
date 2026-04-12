@@ -6,6 +6,7 @@ import { COLORS } from '../constants.js';
 import { COUNTRIES, PLAYABLE_IDS, COUNTRY_MAP } from '../state/countryData.js';
 import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
+import { isRevealed as isIntelRevealed } from '../state/Intel.js';
 import {
   initProjection,
   getProjection,
@@ -533,7 +534,12 @@ export function renderBatteries() {
   if (!batteryGroup) return;
   if (gameState.phase !== 'PLAYING') return;
 
-  const batteries = gameState.interceptors;
+  // Only show player's batteries + revealed enemy batteries
+  const batteries = gameState.interceptors.filter(b => {
+    if (b.countryId === gameState.playerCountryId) return true;
+    if (gameState.isAllied(gameState.playerCountryId, b.countryId)) return true;
+    return isIntelRevealed(b.countryId, 'batteries');
+  });
 
   const markers = batteryGroup.selectAll('.battery-marker')
     .data(batteries, d => d.id);

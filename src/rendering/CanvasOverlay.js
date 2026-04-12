@@ -2,6 +2,9 @@ import { COLORS, EXPLOSION_DURATION, TRAIL_FADE_TIME, INTERCEPT_TRAIL_DURATION, 
 import { getAllNodes } from '../engine/ResourceSystem.js';
 import { RESOURCE_COLORS } from '../state/Resources.js';
 import { COUNTRIES } from '../state/countryData.js';
+import { isRevealed } from '../state/Intel.js';
+import { getEffectiveCost, getPlayerMissileType } from '../ai/AIManager.js';
+import { MISSILE_TYPES } from '../constants.js';
 import { getSatelliteAngle } from '../state/Intel.js';
 import { gameState } from '../state/GameState.js';
 import {
@@ -11,6 +14,7 @@ import {
   getGlobeCenter,
   projectPoint,
   isVisible,
+  geoDistance,
 } from './Projection.js';
 import { events } from '../state/events.js';
 
@@ -119,6 +123,19 @@ export function renderCanvas(dt) {
   // Draw intercept trails
   for (const intercept of gameState.intercepts) {
     drawIntercept(intercept);
+  }
+
+  // Draw invasions
+  if (gameState.invasions) {
+    for (let i = gameState.invasions.length - 1; i >= 0; i--) {
+      const inv = gameState.invasions[i];
+      const age = gameState.elapsed - inv.startTime;
+      if (age > inv.duration) {
+        gameState.invasions.splice(i, 1);
+        continue;
+      }
+      drawInvasion(inv, age);
+    }
   }
 
   // Draw contamination zones
@@ -374,6 +391,7 @@ function drawTargetingPreview() {
   const p2 = projectPoint(to);
   if (!p1 || !p2) return;
 
+  // Dashed line from launch site to target
   ctx.beginPath();
   ctx.setLineDash([4, 4]);
   ctx.moveTo(p1[0], p1[1]);
@@ -382,6 +400,59 @@ function drawTargetingPreview() {
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.setLineDash([]);
+
+  // Cost label at target end
+  const playerId = gameState.playerCountryId;
+  if (playerId) {
+    const typeKey = getPlayerMissileType();
+    const mtype = MISSILE_TYPES[typeKey];
+    if (mtype) {
+      const cost = getEffectiveCost(playerId, typeKey, from, to);
+      const player = gameState.getPlayer();
+      const canAfford = player && player.tokens >= cost;
+
+      // Background pill
+      const label = `${mtype.name} ${cost}◆`;
+      ctx.font = '10px "JetBrains Mono", monospace';
+      const textWidth = ctx.measureText(label).width;
+      const lx = p2[0] + 10;
+      const ly = p2[1] - 8;
+
+      ctx.fillStyle = 'rgba(8, 8, 14, 0.85)';
+      ctx.fillRect(lx - 4, ly - 10, textWidth + 8, 14);
+
+      ctx.fillStyle = canAfford ? 'rgba(234, 179, 8, 0.9)' : 'rgba(220, 38, 38, 0.9)';
+      ctx.fillText(label, lx, ly);
+
+      // Damage estimate
+      const dmgPct = mtype.damage > 0 ? `${(mtype.damage * 100).toFixed(0)}%` : 'N/A';
+      const warheads = mtype.warheads ? ` ×${mtype.warheads}` : '';
+      const special = mtype.empDuration ? `EMP ${mtype.empDuration}s`
+        : mtype.contamination ? `+RAD ${mtype.contaminationDuration}s`
+        : '';
+      const dmgLabel = `DMG ${dmgPct}${warheads}${special ? ' ' + special : ''}`;
+      const dmgWidth = ctx.measureText(dmgLabel).width;
+
+      ctx.fillStyle = 'rgba(8, 8, 14, 0.85)';
+      ctx.fillRect(lx - 4, ly + 2, dmgWidth + 8, 14);
+
+      ctx.fillStyle = mtype.damage > 0 ? 'rgba(220, 38, 38, 0.8)' : 'rgba(124, 58, 237, 0.8)';
+      ctx.fillText(dmgLabel, lx, ly + 12);
+
+      // Distance + flight time
+      const dist = geoDistance(from, to);
+      const distKm = Math.round(dist * 6371);
+      const flightTime = Math.round(mtype.baseFlight + dist * mtype.distFactor);
+      const distLabel = `${distKm.toLocaleString()} km · ~${flightTime}s`;
+      const distWidth = ctx.measureText(distLabel).width;
+
+      ctx.fillStyle = 'rgba(8, 8, 14, 0.85)';
+      ctx.fillRect(lx - 4, ly + 14, distWidth + 8, 14);
+
+      ctx.fillStyle = 'rgba(184, 188, 200, 0.5)';
+      ctx.fillText(distLabel, lx, ly + 24);
+    }
+  }
 }
 
 // === Intercept Rendering ===
@@ -501,6 +572,84 @@ function drawBatteryPreview() {
   ctx.closePath();
   ctx.fillStyle = withAlpha(COLORS.PLAYER, 0.6);
   ctx.fill();
+}
+
+// === Invasion Animation ===
+function drawInvasion(inv, age) {
+  const fromVis = isVisible(inv.from);
+  const toVis = isVisible(inv.to);
+  if (!fromVis && !toVis) return;
+
+  const p1 = fromVis ? projectPoint(inv.from) : null;
+  const p2 = toVis ? projectPoint(inv.to) : null;
+  if (!p1 || !p2) return;
+
+  const progress = age / inv.duration;
+  const fadeAlpha = progress < 0.2 ? progress / 0.2 : progress > 0.8 ? (1 - progress) / 0.2 : 1;
+
+  // Multiple arrow lines sweeping from attacker to target
+  const numArrows = 5;
+  for (let a = 0; a < numArrows; a++) {
+    const offset = a / numArrows;
+    const arrowProgress = ((progress * 2 + offset) % 1); // staggered, looping
+
+    const ax = p1[0] + (p2[0] - p1[0]) * arrowProgress;
+    const ay = p1[1] + (p2[1] - p1[1]) * arrowProgress;
+
+    // Spread arrows slightly perpendicular to the path
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    const spread = (a - numArrows / 2) * 4;
+
+    const fx = ax + perpX * spread;
+    const fy = ay + perpY * spread;
+
+    // Arrow chevron
+    const angle = Math.atan2(dy, dx);
+    const size = 4;
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(size, 0);
+    ctx.lineTo(-size * 0.5, -size * 0.4);
+    ctx.lineTo(-size * 0.5, size * 0.4);
+    ctx.closePath();
+    ctx.fillStyle = withAlpha('#4ade80', fadeAlpha * 0.6 * (1 - arrowProgress * 0.5));
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Main path line
+  ctx.beginPath();
+  ctx.moveTo(p1[0], p1[1]);
+  ctx.lineTo(p2[0], p2[1]);
+  ctx.strokeStyle = withAlpha('#4ade80', fadeAlpha * 0.15);
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // "INVASION" label at midpoint
+  const mx = (p1[0] + p2[0]) / 2;
+  const my = (p1[1] + p2[1]) / 2;
+  const pulse = 0.7 + 0.3 * Math.sin(age * 6);
+
+  ctx.font = '10px "JetBrains Mono", monospace';
+  ctx.fillStyle = withAlpha('#4ade80', fadeAlpha * pulse * 0.8);
+  ctx.textAlign = 'center';
+  ctx.fillText('INVASION', mx, my - 8);
+
+  // Target circle pulsing
+  const targetRadius = 15 + Math.sin(age * 4) * 5;
+  ctx.beginPath();
+  ctx.arc(p2[0], p2[1], targetRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = withAlpha('#4ade80', fadeAlpha * 0.3);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.textAlign = 'start'; // reset
 }
 
 // === Contamination Zones ===

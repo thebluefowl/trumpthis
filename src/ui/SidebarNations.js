@@ -1,7 +1,8 @@
 import { gameState } from '../state/GameState.js';
-import { formatPop } from '../rendering/Globe.js';
+import { formatPop, renderPaths } from '../rendering/Globe.js';
 import { proposeAlliance, breakAllianceBetween, acceptAlliance } from '../state/Diplomacy.js';
 import { REL_ALLIED_THRESHOLD } from '../constants.js';
+import { isRevealed } from '../state/Intel.js';
 
 let expandedId = null;
 
@@ -35,9 +36,14 @@ export function renderNationsTab(el) {
 
     let expanded = '';
     if (isExpanded && !c.elim) {
+      const seeBatteries = isRevealed(c.id, 'batteries');
+      const seeTokens = isRevealed(c.id, 'tokens');
+      const seeResearch = isRevealed(c.id, 'research');
+      const hidden = '<span style="color:var(--text-dim);font-style:italic">UNKNOWN</span>';
+
       const inFlight = gameState.missiles.filter(m => m.fromCountryId === c.id).length;
       const incoming = gameState.missiles.filter(m => m.toCountryId === c.id).length;
-      const batteries = gameState.getBatteryCount(c.id);
+      const batteries = seeBatteries ? gameState.getBatteryCount(c.id) : null;
       const allies = gameState.getAllies(c.id).map(id => gameState.countries.get(id)?.name).filter(Boolean);
 
       let actionBtn = '';
@@ -49,18 +55,31 @@ export function renderNationsTab(el) {
         actionBtn = `<button class="sb-btn accent" data-action="propose" data-id="${c.id}">Propose Alliance</button>`;
       }
 
+      const canInvade = gameState.canInvade(playerId, c.id);
+      const invasionCost = canInvade ? gameState.getInvasionCost(playerId, c.id) : 0;
+      let invadeBtn = '';
+      if (canInvade) {
+        const player = gameState.getPlayer();
+        const affordable = player && player.tokens >= invasionCost;
+        invadeBtn = `<button class="sb-btn ${affordable ? 'primary' : ''}" data-action="invade" data-id="${c.id}" ${affordable ? '' : 'disabled'}>
+          INVADE (${invasionCost}◆)
+        </button>`;
+      }
+
       expanded = `
         <div class="nation-expanded">
           <div class="sb-row"><span class="sb-row-label">Relationship</span><span class="sb-row-value" style="color:${relColor}">${c.rel > 0 ? '+' : ''}${c.rel}</span></div>
           <div class="sb-row"><span class="sb-row-label">Population</span><span class="sb-row-value">${formatPop(c.population)} (${popPct.toFixed(0)}%)</span></div>
           <div class="sb-row"><span class="sb-row-label">Tier</span><span class="sb-row-value">${c.tier}</span></div>
-          <div class="sb-row"><span class="sb-row-label">Batteries</span><span class="sb-row-value">${batteries}</span></div>
+          <div class="sb-row"><span class="sb-row-label">Tokens</span><span class="sb-row-value">${seeTokens ? Math.floor(c.tokens) + '◆' : hidden}</span></div>
+          <div class="sb-row"><span class="sb-row-label">Batteries</span><span class="sb-row-value">${batteries !== null ? batteries : hidden}</span></div>
           <div class="sb-row"><span class="sb-row-label">Missiles Out</span><span class="sb-row-value">${inFlight}</span></div>
           <div class="sb-row"><span class="sb-row-label">Incoming</span><span class="sb-row-value">${incoming}</span></div>
           <div class="sb-row"><span class="sb-row-label">Launched</span><span class="sb-row-value">${c.combatStats.missilesLaunched}</span></div>
           <div class="sb-row"><span class="sb-row-label">Dmg Dealt</span><span class="sb-row-value">${formatPop(c.combatStats.damageDealt)}</span></div>
           <div class="sb-row"><span class="sb-row-label">Allies</span><span class="sb-row-value">${allies.length > 0 ? allies.slice(0, 3).join(', ') : 'None'}</span></div>
           ${actionBtn}
+          ${invadeBtn}
         </div>
       `;
     }
@@ -98,6 +117,14 @@ export function renderNationsTab(el) {
       if (action === 'propose') proposeAlliance(playerId, targetId);
       else if (action === 'accept') acceptAlliance(playerId, targetId);
       else if (action === 'break') breakAllianceBetween(playerId, targetId);
+      else if (action === 'invade') {
+        const success = gameState.executeInvasion(playerId, targetId);
+        if (success) {
+          const targetName = gameState.countries.get(targetId)?.name || 'Unknown';
+          gameState.addNotification(`You have invaded and annexed ${targetName}!`, 'elimination');
+          renderPaths();
+        }
+      }
       renderNationsTab(el);
     });
   });

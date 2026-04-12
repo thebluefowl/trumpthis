@@ -1,4 +1,4 @@
-import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES } from '../constants.js';
+import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES, INVASION_THRESHOLD, INVASION_BASE_COST } from '../constants.js';
 import { COUNTRIES, COUNTRY_MAP } from './countryData.js';
 
 function relKey(a, b) {
@@ -33,8 +33,9 @@ class GameState {
 
     this.elapsed = 0;
     this.paused = false;
-    this.nuclearWinterLevel = 0; // increments with each nuke detonation
+    this.nuclearWinterLevel = 0;
     this.contaminations = [];
+    this.invasions = [];
 
     this.stats = {
       playerLaunched: 0,
@@ -173,8 +174,84 @@ class GameState {
 
   getBatteryCost(countryId) {
     const count = this.getBatteryCount(countryId);
-    // Each battery costs 50% more than the last: 12, 18, 27, 40, 60...
-    return Math.ceil(12 * Math.pow(1.5, count));
+    // Linear scaling: 8, 10, 12, 14, 16, 18, 20...
+    return 8 + count * 2;
+  }
+
+  // === Invasion ===
+
+  canInvade(attackerId, targetId) {
+    if (attackerId === targetId) return false;
+    if (this.isEliminated(targetId)) return false;
+    if (this.isAllied(attackerId, targetId)) return false;
+
+    const target = this.countries.get(targetId);
+    if (!target) return false;
+
+    const popRatio = target.population / target.startingPopulation;
+    return popRatio < INVASION_THRESHOLD && popRatio > 0;
+  }
+
+  getInvasionCost(attackerId, targetId) {
+    const target = this.countries.get(targetId);
+    if (!target) return Infinity;
+
+    const popRatio = target.population / target.startingPopulation;
+    // Cost scales with remaining strength — weaker = cheaper
+    // Tier multiplier: superpowers are harder to invade
+    const tierMult = target.tier === 1 ? 2.0 : target.tier === 2 ? 1.5 : 1.0;
+    return Math.ceil(INVASION_BASE_COST * popRatio * 4 * tierMult);
+  }
+
+  executeInvasion(attackerId, targetId) {
+    if (!this.canInvade(attackerId, targetId)) return false;
+
+    const attacker = this.countries.get(attackerId);
+    const target = this.countries.get(targetId);
+    const cost = this.getInvasionCost(attackerId, targetId);
+
+    // Create invasion animation
+    this.invasions.push({
+      from: attacker.centroid,
+      to: target.centroid,
+      attackerName: attacker.name,
+      targetName: target.name,
+      startTime: this.elapsed,
+      duration: 3, // seconds
+    });
+
+    if (!attacker || attacker.tokens < cost) return false;
+
+    attacker.tokens -= cost;
+
+    // Absorb territory
+    attacker.population += target.population;
+    attacker.startingPopulation += target.startingPopulation;
+
+    // Inherit launch sites
+    for (const site of target.launchSites) {
+      attacker.launchSites.push({ ...site });
+    }
+
+    // Inherit batteries
+    for (const battery of this.interceptors) {
+      if (battery.countryId === targetId) {
+        battery.countryId = attackerId;
+        battery.role = attacker.role;
+      }
+    }
+
+    // Inherit cities
+    for (const city of target.cities) {
+      attacker.cities.push({ ...city });
+    }
+
+    // Eliminate the target
+    target.population = 0;
+    target.cities.forEach(c => { c.population = 0; c.destroyed = true; });
+    this.eliminateCountry(targetId);
+
+    return true;
   }
 
   // === Notifications ===
