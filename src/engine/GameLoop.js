@@ -6,6 +6,8 @@ import { processImpacts } from './DamageModel.js';
 import { renderCanvas } from '../rendering/CanvasOverlay.js';
 import { renderHUD } from '../rendering/HUD.js';
 import { renderSidebar } from '../ui/Sidebar.js';
+import { setMusicPhase } from '../audio/Music.js';
+import { isEscalationActive } from './Escalation.js';
 import { updateNewsTicker } from '../ui/NewsTicker.js';
 import { updateAIManager } from '../ai/AIManager.js';
 import { updateDiplomacy } from '../state/Diplomacy.js';
@@ -53,6 +55,12 @@ function tick(currentTime) {
     updateConquest(dt);
     cleanupExpired();
     checkGameOver();
+
+    // Dynamic music phase
+    if (gameState.nuclearWinterLevel > 0) setMusicPhase('war');
+    else if (isEscalationActive()) setMusicPhase('war');
+    else if (gameState.missiles.length > 15) setMusicPhase('war');
+    else if (gameState.missiles.length > 3) setMusicPhase('tension');
   }
 
   renderCanvas(dt);

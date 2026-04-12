@@ -23,6 +23,9 @@ import {
 } from './Projection.js';
 
 let svg, countriesGroup, graticulePath, oceanCircle, outlineCircle, labelsGroup;
+let interactable = false; // disable interaction until game setup
+let autoRotating = false;
+let autoRotateRAF = null;
 let countryFeatures = [];
 let topoData = null;
 
@@ -326,6 +329,7 @@ export function renderLaunchSites() {
 const tooltip = () => document.getElementById('tooltip');
 
 function onCountryHover(event, d) {
+  if (!interactable) return;
   const id = String(d.id);
   if (!PLAYABLE_IDS.has(id)) return;
   events.emit('country:hover', { id });
@@ -365,6 +369,7 @@ function positionTooltip(event) {
 }
 
 function onCountryClick(event, d) {
+  if (!interactable) return;
   let id = String(d.id);
   const projection = getProjection();
   const svgEl = document.getElementById('globe');
@@ -419,6 +424,43 @@ function onToggleProjection() {
 }
 
 export { onToggleProjection as switchProjection };
+
+// === Interaction Control ===
+export function setInteractable(enabled) {
+  interactable = enabled;
+  if (svg) {
+    svg.style('pointer-events', enabled ? 'all' : 'none');
+  }
+}
+
+// === Auto-Rotation ===
+export function startAutoRotate() {
+  if (autoRotating) return;
+  autoRotating = true;
+  let lastTime = performance.now();
+
+  function spin(now) {
+    if (!autoRotating) return;
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    const projection = getProjection();
+    const r = projection.rotate();
+    projection.rotate([r[0] + dt * 8, r[1], r[2]]); // 8 degrees/sec
+    renderPaths();
+
+    autoRotateRAF = requestAnimationFrame(spin);
+  }
+  autoRotateRAF = requestAnimationFrame(spin);
+}
+
+export function stopAutoRotate() {
+  autoRotating = false;
+  if (autoRotateRAF) {
+    cancelAnimationFrame(autoRotateRAF);
+    autoRotateRAF = null;
+  }
+}
 
 // === Zoom ===
 function onWheel(e) {

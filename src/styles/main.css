@@ -43,96 +43,143 @@ html, body {
 }
 .screen-overlay.hidden, .hidden { display: none !important; }
 
-.title-block {
-  display: flex; flex-direction: column; align-items: center;
-  gap: 0;
+/* === Start Screen — War Room Briefing === */
+.start-screen {
+  flex-direction: row !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
 }
 
-.title-logo {
-  width: 80px; height: auto;
+/* briefing panel uses .left-panel base — no extra width/padding */
+
+.briefing-logo {
+  display: flex; justify-content: center;
   margin-bottom: 16px;
-  opacity: 0.8;
 }
 
-.title-eyebrow {
-  font-family: var(--mono); font-size: 10px;
-  color: var(--text-dim);
-  letter-spacing: 3px;
-  margin-bottom: 12px;
+.briefing-logo-img {
+  width: 60px; height: auto; opacity: 0.6;
 }
 
-.select-title {
-  font-size: 48px; font-weight: 700;
+.briefing-title {
+  font-family: var(--mono); font-size: 28px; font-weight: 700;
+  color: var(--text-bright); letter-spacing: 6px;
+  text-align: center; margin-bottom: 4px;
+}
+
+.briefing-subtitle {
+  font-family: var(--mono); font-size: 9px;
+  color: var(--text-dim); letter-spacing: 2px;
+  text-align: center; margin-bottom: 16px;
+}
+
+.briefing-rule {
+  height: 1px; background: var(--panel-border);
+  margin: 12px 0;
+}
+
+.briefing-section {
+  margin-bottom: 14px;
+}
+
+.briefing-label {
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  color: var(--text-dim); letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+
+.briefing-text {
+  font-family: var(--font); font-size: 12px;
+  color: var(--text); line-height: 1.7;
+}
+
+.briefing-roe {
+  color: var(--amber); font-style: italic;
+}
+
+.briefing-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.briefing-stat {
+  background: #0a0c14;
+  border: 1px solid var(--panel-border);
+  padding: 8px 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+
+.briefing-stat-val {
+  font-family: var(--mono); font-size: 20px; font-weight: 700;
   color: var(--text-bright);
-  letter-spacing: 10px; text-transform: uppercase;
 }
 
-.title-rule {
-  width: 120px; height: 1px;
-  background: var(--panel-border);
-  margin: 14px 0;
+.briefing-stat-label {
+  font-family: var(--mono); font-size: 8px;
+  color: var(--text-dim); letter-spacing: 1px;
 }
 
-.select-subtitle {
-  font-family: var(--mono); font-size: 11px;
-  color: var(--text-dim);
-  letter-spacing: 3px; text-transform: uppercase;
+.briefing-btn {
+  width: 100%; margin-top: auto; padding-top: 16px;
 }
 
-.title-desc {
-  font-size: 12px; color: var(--text-dim); margin-top: 20px;
-  text-align: center; line-height: 1.8;
-}
-
-.btn-start {
-  margin-top: 32px;
-}
-
-#screen-select .select-status {
-  position: absolute;
-  top: 16px; left: 20px;
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-dim);
-  letter-spacing: 1px;
-  opacity: 0.5;
-}
-
-#screen-select .select-status-right {
-  position: absolute;
-  top: 16px; right: 20px;
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-dim);
-  letter-spacing: 1px;
-  text-align: right;
-  opacity: 0.5;
-}
-
-.select-version {
-  position: absolute;
-  bottom: 16px; left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-dim);
-  letter-spacing: 1px;
+.briefing-footer {
+  display: flex; justify-content: space-between;
+  margin-top: 12px;
+  font-family: var(--mono); font-size: 8px;
+  color: var(--text-dim); letter-spacing: 1px;
   opacity: 0.4;
 }
 
-.screen-setup {
-  position: fixed; inset: 0;
-  display: flex;
-  z-index: 800;
-  background: #0a0c14;
+/* Right side — globe */
+.briefing-map {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; min-width: 0;
 }
 
-.setup-sidebar {
-  width: 300px; flex-shrink: 0;
-  background: var(--panel);
-  border-right: 1px solid var(--panel-border);
-  display: flex; flex-direction: column;
-  overflow: hidden;
+.briefing-map-header {
+  display: flex; justify-content: space-between;
+  padding: 6px 12px;
+  background: #0a0c14;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+.briefing-map-label {
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  color: var(--text-dim); letter-spacing: 1px;
+}
+
+.briefing-map-status {
+  font-family: var(--mono); font-size: 9px;
+  color: var(--green); letter-spacing: 1px;
+}
+
+.briefing-map-footer {
+  display: flex; justify-content: space-between;
+  padding: 4px 12px;
+  background: #0a0c14;
+  border-top: 1px solid var(--panel-border);
+  font-family: var(--mono); font-size: 8px;
+  color: var(--text-dim); letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+/* screen-setup is now handled by .left-panel.setup-panel */
+
+.classification-bar {
+  font-family: var(--mono); font-size: 8px; font-weight: 600;
+  color: var(--red); letter-spacing: 1.5px;
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.tb-classification {
+  font-size: 8px; font-weight: 600;
+  color: var(--red); letter-spacing: 1px;
+  opacity: 0.5;
 }
 
 .setup-sidebar-content {
@@ -140,14 +187,8 @@ html, body {
   display: flex; flex-direction: column;
 }
 
-.setup-map {
-  flex: 1; min-width: 0;
-  display: flex; flex-direction: column;
-  overflow: hidden;
-}
-
 .setup-header {
-  padding: 10px 16px;
+  padding: 10px 20px;
   border-bottom: 1px solid var(--panel-border);
   flex-shrink: 0;
 }
@@ -164,7 +205,7 @@ html, body {
 
 .country-pick {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 16px;
+  padding: 6px 20px;
   cursor: pointer; transition: all 0.1s;
   border-left: 2px solid transparent;
 }
@@ -243,18 +284,18 @@ html, body {
 .picker-title {
   font-family: var(--mono); font-size: 11px; font-weight: 600;
   color: var(--text-bright); letter-spacing: 2px;
-  padding: 10px 16px 4px; margin: 0;
+  padding: 10px 20px 4px;
 }
 .picker-subtitle {
   font-family: var(--mono); font-size: 10px;
   color: var(--text-dim); letter-spacing: 1px;
-  padding: 0 16px 8px;
+  padding: 0 20px 8px;
   border-bottom: 1px solid var(--panel-border);
   margin-bottom: 4px;
 }
 .bloc-list {
   display: flex; flex-direction: column; gap: 2px;
-  width: 100%; max-width: 500px; padding: 0 16px;
+  width: 100%; padding: 0 20px;
   align-self: flex-start;
 }
 .bloc-card {
@@ -283,29 +324,53 @@ html, body {
 .gameover-stats { font-family: var(--mono); font-size: 11px; color: var(--text-dim); text-align: center; line-height: 2.2; }
 .gameover-stats span { color: var(--text-bright); }
 
-/* === Game Layout — 70/30 Split === */
-.game-layout {
-  display: flex; width: 100%; height: 100%; overflow: hidden;
-}
-.game-layout.hidden { display: none; }
-
-.map-area {
-  flex: 1; min-width: 0; position: relative; overflow: hidden;
+/* === Game HUD — fixed elements around the globe === */
+#game-hud {
+  position: fixed; inset: 0;
+  z-index: 100;
+  pointer-events: none;
   display: flex; flex-direction: column;
+}
+
+#game-hud > * {
+  pointer-events: auto;
+}
+
+/* Globe — fixed in place, never moves */
+.globe-fixed {
+  position: fixed; inset: 0;
+  z-index: 1;
+}
+#globe { display: block; width: 100%; height: 100%; }
+#overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+
+/* Left panels overlay the globe */
+.left-panel {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: 360px;
+  background: var(--panel);
+  border-right: 1px solid var(--panel-border);
+  z-index: 100;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-body {
+  flex: 1; overflow-y: auto;
+  padding: 16px 20px;
 }
 
 .globe-container {
   flex: 1; min-height: 0; position: relative; overflow: hidden;
 }
-#globe { display: block; width: 100%; height: 100%; }
-#overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
 
 /* === Top Bar === */
 .top-bar {
+  position: fixed; top: 0; left: 0; right: 0;
   display: flex; align-items: stretch;
   height: 36px; background: #0a0c14;
   border-bottom: 1px solid var(--panel-border);
-  z-index: 10; flex-shrink: 0;
+  z-index: 120;
   font-family: var(--mono);
 }
 .tb-seg { display: flex; align-items: center; gap: 6px; padding: 0 12px; }
@@ -338,13 +403,19 @@ html, body {
 .tb-btn-defend:hover { background: rgba(56,189,248,0.06); }
 .tb-btn-build { color: var(--green-bright); }
 .tb-btn-build:hover { background: rgba(74,222,128,0.06); }
+.tb-btn kbd {
+  font-family: var(--mono); font-size: 9px;
+  background: var(--panel-border); color: var(--text-dim);
+  padding: 1px 3px; margin-right: 3px;
+}
 
 /* === Missile Strip === */
 .missile-strip {
+  position: fixed; bottom: 48px; left: 0; right: 300px;
   display: flex; justify-content: center;
   height: 26px; background: #0a0c14;
   border-top: 1px solid var(--panel-border);
-  flex-shrink: 0; overflow-x: auto;
+  z-index: 120; overflow-x: auto;
 }
 .ms {
   display: flex; align-items: center; gap: 3px;
@@ -364,11 +435,60 @@ html, body {
 .ms-nuke.active { color: var(--red); border-bottom-color: var(--red); }
 .ms-nuke.active b { background: var(--red); }
 
+/* Weapon tooltip */
+.weapon-tip {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #08080e;
+  border: 1px solid var(--panel-border);
+  padding: 8px 14px;
+  font-family: var(--mono);
+  z-index: 200;
+  pointer-events: none;
+  white-space: nowrap;
+  display: none;
+}
+
+.weapon-tip.visible { display: block; }
+
+.weapon-tip-name {
+  font-size: 12px; font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+}
+
+.weapon-tip-desc {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.weapon-tip-stats {
+  display: flex; gap: 12px;
+  font-size: 9px;
+}
+
+.weapon-tip-stat {
+  display: flex; flex-direction: column; gap: 1px;
+}
+
+.weapon-tip-stat-label {
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+.weapon-tip-stat-val {
+  color: var(--text-bright);
+}
+
 /* === Bottom Bar (Status + Ticker) === */
 .bottom-bar {
+  position: fixed; bottom: 0; left: 0; right: 300px;
   display: flex; flex-direction: column;
-  flex-shrink: 0;
   border-top: 1px solid var(--panel-border);
+  z-index: 120;
 }
 
 .status-msg {
@@ -423,8 +543,8 @@ html, body {
 
 /* === Claim Alert === */
 .claim-alert {
-  position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
-  display: flex; flex-direction: column; gap: 4px; z-index: 20;
+  position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 4px; z-index: 130;
 }
 .claim-card {
   background: var(--panel); border: 1px solid var(--gold);
@@ -443,9 +563,11 @@ html, body {
 
 /* === Intel Sidebar === */
 .intel-sidebar {
-  width: 300px; flex-shrink: 0;
+  position: fixed; top: 36px; right: 0; bottom: 0;
+  width: 300px;
   background: var(--panel); border-left: 1px solid var(--panel-border);
   display: flex; flex-direction: column; overflow: hidden;
+  z-index: 110;
 }
 
 .sidebar-tabs {

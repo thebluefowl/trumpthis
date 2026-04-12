@@ -168,7 +168,13 @@ class GameState {
   }
 
   canPlaceBattery(countryId) {
-    return this.getBatteryCount(countryId) < this.getMaxBatteries(countryId);
+    return true; // no cap — cost scales instead
+  }
+
+  getBatteryCost(countryId) {
+    const count = this.getBatteryCount(countryId);
+    // Each battery costs 50% more than the last: 12, 18, 27, 40, 60...
+    return Math.ceil(12 * Math.pow(1.5, count));
   }
 
   // === Notifications ===

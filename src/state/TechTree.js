@@ -1,26 +1,130 @@
-// 4 branches × 3 tiers = 12 techs
+// 4 branches × 5 tiers = 20 techs
 // Each tier requires the previous tier in the same branch
 
 export const TECH_DEFS = {
-  // OFFENSIVE
-  faster_missiles:  { branch: 'offensive',  tier: 1, name: 'Faster Missiles',    cost: 15, time: 30,  desc: '-20% flight time' },
-  mirv_upgrade:     { branch: 'offensive',  tier: 2, name: 'MIRV Upgrade',       cost: 30, time: 60,  desc: 'MIRVs split into 6 warheads', requires: 'faster_missiles' },
-  hypersonic:       { branch: 'offensive',  tier: 3, name: 'Hypersonic Warheads', cost: 50, time: 90, desc: '-40% flight time, -20% intercept rate', requires: 'mirv_upgrade' },
+  // === OFFENSIVE — faster, deadlier, harder to stop ===
+  propulsion_upgrade: {
+    branch: 'offensive', tier: 1, name: 'Advanced Propulsion',
+    cost: 12, time: 25,
+    desc: '-15% missile flight time. All missiles arrive faster.',
+  },
+  cluster_munitions: {
+    branch: 'offensive', tier: 2, name: 'Cluster Munitions',
+    cost: 25, time: 45,
+    desc: 'Tactical and Cruise missiles deal +50% damage.',
+    requires: 'propulsion_upgrade',
+  },
+  mirv_upgrade: {
+    branch: 'offensive', tier: 3, name: 'MIRV Bus Upgrade',
+    cost: 40, time: 60,
+    desc: 'MIRVs split into 6 warheads instead of 4.',
+    requires: 'cluster_munitions',
+  },
+  hypersonic_glide: {
+    branch: 'offensive', tier: 4, name: 'Hypersonic Glide',
+    cost: 60, time: 90,
+    desc: '-35% flight time. -15% enemy intercept rate against your missiles.',
+    requires: 'mirv_upgrade',
+  },
+  extinction_protocol: {
+    branch: 'offensive', tier: 5, name: 'Extinction Protocol',
+    cost: 100, time: 120,
+    desc: 'Nuclear weapons deal +30% damage and radiation lasts 50% longer.',
+    requires: 'hypersonic_glide',
+  },
 
-  // DEFENSIVE
-  better_intercept: { branch: 'defensive',  tier: 1, name: 'Better Intercept',   cost: 15, time: 30,  desc: '+15% intercept success' },
-  emp_shield:       { branch: 'defensive',  tier: 2, name: 'EMP Shield',         cost: 30, time: 60,  desc: 'Interceptors resist EMP (half disable time)', requires: 'better_intercept' },
-  laser_defense:    { branch: 'defensive',  tier: 3, name: 'Laser Defense',      cost: 50, time: 90,  desc: '90% auto-intercept rate', requires: 'emp_shield' },
+  // === DEFENSIVE — survive longer, intercept more ===
+  radar_upgrade: {
+    branch: 'defensive', tier: 1, name: 'Phased Array Radar',
+    cost: 12, time: 25,
+    desc: '+10% interceptor success rate. See threats earlier.',
+  },
+  point_defense: {
+    branch: 'defensive', tier: 2, name: 'Point Defense Systems',
+    cost: 25, time: 45,
+    desc: 'Interceptors recharge 30% faster.',
+    requires: 'radar_upgrade',
+  },
+  emp_hardening: {
+    branch: 'defensive', tier: 3, name: 'EMP Hardening',
+    cost: 40, time: 60,
+    desc: 'Interceptors resist EMP (halved disable time). Launch sites recover 2x faster.',
+    requires: 'point_defense',
+  },
+  directed_energy: {
+    branch: 'defensive', tier: 4, name: 'Directed Energy Weapons',
+    cost: 65, time: 90,
+    desc: '85% auto-intercept rate. Interceptors hit nearly everything.',
+    requires: 'emp_hardening',
+  },
+  aegis_network: {
+    branch: 'defensive', tier: 5, name: 'AEGIS Defense Network',
+    cost: 100, time: 120,
+    desc: 'Your batteries can defend allied nations within range. +20% range.',
+    requires: 'directed_energy',
+  },
 
-  // INTEL
-  satellite_recon:  { branch: 'intel',      tier: 1, name: 'Satellite Recon',    cost: 10, time: 20,  desc: 'Reveals enemy batteries' },
-  spy_missiles:     { branch: 'intel',      tier: 2, name: 'Spy Missiles',       cost: 20, time: 40,  desc: 'Unlock spy missile type (cheap recon)', requires: 'satellite_recon' },
-  cyber_warfare:    { branch: 'intel',      tier: 3, name: 'Cyber Warfare',      cost: 40, time: 60,  desc: 'Disable enemy token gen for 10s (15 tokens)', requires: 'spy_missiles' },
+  // === INTEL — see more, know more, disrupt more ===
+  sigint: {
+    branch: 'intel', tier: 1, name: 'SIGINT Capability',
+    cost: 10, time: 20,
+    desc: 'Reveals enemy interceptor batteries on the map.',
+  },
+  satellite_constellation: {
+    branch: 'intel', tier: 2, name: 'Satellite Constellation',
+    cost: 22, time: 40,
+    desc: 'Satellite scans 2x wider area. Reveals enemy token counts.',
+    requires: 'sigint',
+  },
+  electronic_warfare: {
+    branch: 'intel', tier: 3, name: 'Electronic Warfare',
+    cost: 38, time: 55,
+    desc: 'EMP weapons have +25% larger effect radius.',
+    requires: 'satellite_constellation',
+  },
+  cyber_ops: {
+    branch: 'intel', tier: 4, name: 'Cyber Operations',
+    cost: 55, time: 75,
+    desc: 'Can spend 20◆ to disable an enemy nation\'s token gen for 15 seconds.',
+    requires: 'electronic_warfare',
+  },
+  total_awareness: {
+    branch: 'intel', tier: 5, name: 'Total Domain Awareness',
+    cost: 90, time: 100,
+    desc: 'All enemy batteries, missiles, and research permanently visible.',
+    requires: 'cyber_ops',
+  },
 
-  // ECONOMIC
-  efficient_mining: { branch: 'economic',   tier: 1, name: 'Efficient Mining',   cost: 10, time: 20,  desc: '+25% resource node bonuses' },
-  war_economy:      { branch: 'economic',   tier: 2, name: 'War Economy',        cost: 25, time: 45,  desc: '+50% token gen during escalation', requires: 'efficient_mining' },
-  supply_lines:     { branch: 'economic',   tier: 3, name: 'Supply Lines',       cost: 40, time: 60,  desc: '-30% missile cost for adjacent territories', requires: 'war_economy' },
+  // === ECONOMIC — earn more, spend less, build faster ===
+  resource_extraction: {
+    branch: 'economic', tier: 1, name: 'Resource Extraction',
+    cost: 10, time: 20,
+    desc: '+25% resource node token bonuses.',
+  },
+  industrial_base: {
+    branch: 'economic', tier: 2, name: 'Industrial Base',
+    cost: 22, time: 40,
+    desc: 'Interceptor batteries cost 25% less. Launch silos cost 20% less.',
+    requires: 'resource_extraction',
+  },
+  logistics_network: {
+    branch: 'economic', tier: 3, name: 'Logistics Network',
+    cost: 38, time: 55,
+    desc: '-30% supply line cost surcharge on all missiles.',
+    requires: 'industrial_base',
+  },
+  wartime_production: {
+    branch: 'economic', tier: 4, name: 'Wartime Production',
+    cost: 55, time: 75,
+    desc: '+40% token generation during escalation phase.',
+    requires: 'logistics_network',
+  },
+  superpower_economy: {
+    branch: 'economic', tier: 5, name: 'Superpower Economy',
+    cost: 90, time: 100,
+    desc: 'Token cap +100. Base generation +50%. You become an economic juggernaut.',
+    requires: 'wartime_production',
+  },
 };
 
 export const BRANCHES = ['offensive', 'defensive', 'intel', 'economic'];

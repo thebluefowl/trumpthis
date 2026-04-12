@@ -4,6 +4,7 @@ import { events } from '../state/events.js';
 import { sampleFullArc, triggerShake, triggerFlash } from '../rendering/CanvasOverlay.js';
 import { createInterpolator, geoDistance } from '../rendering/Projection.js';
 import { createMissile } from '../ai/AIManager.js';
+import { getNukeRadiationMultiplier, getEMPRadiusMultiplier, getEMPResistance, getMIRVWarheads } from './ResearchSystem.js';
 
 export function updateMissiles(dt) {
   const toRemove = [];
@@ -17,7 +18,8 @@ export function updateMissiles(dt) {
     if (missile.mtype?.warheads && !missile.split && missile.progress >= (missile.mtype.splitAt || 0.7)) {
       missile.split = true;
       const splitPos = missile.interpolator(missile.progress);
-      const warheadCount = missile.mtype.warheads;
+      // Tech: MIRV Bus Upgrade — 6 warheads instead of 4
+      const warheadCount = getMIRVWarheads(missile.fromCountryId);
 
       // Create warhead missiles spreading around the target
       for (let w = 0; w < warheadCount; w++) {
@@ -104,6 +106,7 @@ export function updateMissiles(dt) {
           maxRadius: missile.mtype?.blastRadius || 25,
           countryId: missile.toCountryId,
           attackerId: missile.fromCountryId,
+          missileType: missile.type,
           damageApplied: false,
           damage: missile.mtype?.damage || 0.05,
           isNuke: missile.mtype?.isNuke || false,
@@ -116,7 +119,7 @@ export function updateMissiles(dt) {
             position: missile.target,
             countryId: missile.toCountryId,
             startTime: gameState.elapsed,
-            duration: missile.mtype.contaminationDuration,
+            duration: missile.mtype.contaminationDuration * (missile.mtype.isNuke ? getNukeRadiationMultiplier(missile.fromCountryId) : 1),
             damagePerSecond: missile.mtype.contaminationDamage,
             radius: 0.04, // radians
           });
@@ -175,17 +178,20 @@ export function updateMissiles(dt) {
 }
 
 function applyEMP(missile) {
-  const empRange = 0.2; // radians
+  // Tech: Electronic Warfare — +25% EMP radius
+  const rangeMult = getEMPRadiusMultiplier(missile.fromCountryId);
+  const empRange = 0.2 * rangeMult;
   const empDuration = missile.mtype.empDuration;
 
   for (const battery of gameState.interceptors) {
-    // Don't EMP your own or allied batteries
     if (battery.countryId === missile.fromCountryId) continue;
     if (gameState.isAllied(battery.countryId, missile.fromCountryId)) continue;
 
     const dist = geoDistance(battery.position, missile.target);
     if (dist < empRange) {
-      battery.cooldownUntil = Math.max(battery.cooldownUntil, gameState.elapsed + empDuration);
+      // Tech: EMP Hardening — halved disable time for defender
+      const resistance = getEMPResistance(battery.countryId);
+      battery.cooldownUntil = Math.max(battery.cooldownUntil, gameState.elapsed + empDuration * resistance);
     }
   }
 

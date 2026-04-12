@@ -8,7 +8,7 @@ import {
 import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
 import { geoDistance } from '../rendering/Projection.js';
-import { getInterceptBonus } from './ResearchSystem.js';
+import { getInterceptBonus, getInterceptorCooldownMultiplier, getInterceptorRangeBonus, canDefendAllies, getBuildCostMultiplier, getEMPResistance, getEnemyInterceptPenalty } from './ResearchSystem.js';
 
 // Terminal phase intercept: fires when missile enters range, resolves in ~0.8s
 const INTERCEPT_RESOLVE_TIME = 0.8; // seconds — very fast, like a real terminal intercept
@@ -92,7 +92,14 @@ export function manualIntercept(missile) {
 
 function fireInterceptor(battery, missile, successRate) {
   engagedMissiles.add(missile.id);
-  battery.cooldownUntil = gameState.elapsed + INTERCEPTOR_COOLDOWN;
+
+  // Tech: Point Defense Systems — faster recharge
+  const cdMult = getInterceptorCooldownMultiplier(battery.countryId);
+  battery.cooldownUntil = gameState.elapsed + INTERCEPTOR_COOLDOWN * cdMult;
+
+  // Tech: Hypersonic Glide — attacker's missiles are harder to intercept
+  const attackerPenalty = getEnemyInterceptPenalty(missile.fromCountryId);
+  successRate = Math.max(0.05, successRate + attackerPenalty);
 
   // Predict where the missile will be when the interceptor arrives
   const futureProgress = Math.min(1.0, missile.progress + missile.speed * INTERCEPT_RESOLVE_TIME);
@@ -118,14 +125,29 @@ function findMissileInRange(battery) {
   let nearest = null;
   let nearestDist = Infinity;
 
+  // Tech: AEGIS Defense Network — +20% range
+  const rangeMult = getInterceptorRangeBonus(battery.countryId);
+  const effectiveRange = INTERCEPTOR_RANGE * rangeMult;
+
+  // Tech: AEGIS — can defend allies
+  const defendsAllies = canDefendAllies(battery.countryId);
+
   for (const missile of gameState.missiles) {
     if (missile.fromCountryId === battery.countryId) continue;
     if (gameState.isAllied(missile.fromCountryId, battery.countryId)) continue;
 
+    // Only intercept missiles targeting this nation or allies (if AEGIS)
+    const targetingUs = missile.toCountryId === battery.countryId;
+    const targetingAlly = defendsAllies && gameState.isAllied(battery.countryId, missile.toCountryId);
+    if (!targetingUs && !targetingAlly) {
+      // Still intercept if missile is just passing through our range
+      // (any hostile missile in range gets intercepted)
+    }
+
     const missilePos = missile.interpolator(missile.progress);
     const dist = geoDistance(battery.position, missilePos);
 
-    if (dist < INTERCEPTOR_RANGE && dist < nearestDist) {
+    if (dist < effectiveRange && dist < nearestDist) {
       nearest = missile;
       nearestDist = dist;
     }
@@ -154,13 +176,15 @@ function findBatteryForMissile(missile, countryId) {
 }
 
 export function placeBattery(countryId, position, role) {
-  if (!gameState.canPlaceBattery(countryId)) return false;
-
   const country = gameState.countries.get(countryId);
   if (!country) return false;
-  if (country.tokens < INTERCEPTOR_COST) return false;
 
-  country.tokens -= INTERCEPTOR_COST;
+  // Tech: Industrial Base — batteries cost 25% less
+  const buildMult = getBuildCostMultiplier(countryId);
+  const cost = Math.ceil(gameState.getBatteryCost(countryId) * buildMult);
+  if (country.tokens < cost) return false;
+
+  country.tokens -= cost;
 
   const battery = {
     id: crypto.randomUUID(),

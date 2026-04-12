@@ -7,7 +7,11 @@ let zoomLevel = 1;
 const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 6;
 
-let projectionType = 'mercator'; // 'orthographic' | 'mercator'
+// Offset to center the projection in the visible area (accounting for panels)
+let panelOffsetLeft = 0;
+let panelOffsetRight = 0;
+
+let projectionType = 'orthographic'; // start as globe for title screen
 
 export function initProjection(w, h) {
   width = w;
@@ -23,17 +27,26 @@ export function initProjection(w, h) {
 function createProjection() {
   const currentRotation = projection ? projection.rotate() : [0, -20, 0];
 
+  // Center point accounts for panel offsets
+  const visibleLeft = panelOffsetLeft;
+  const visibleRight = width - panelOffsetRight;
+  const cx = (visibleLeft + visibleRight) / 2;
+  const cy = height / 2;
+  const visibleWidth = visibleRight - visibleLeft;
+
   if (projectionType === 'mercator') {
-    const mercatorScale = width / (2 * Math.PI); // standard mercator scale
+    const mercatorScale = visibleWidth / (2 * Math.PI);
     projection = geoMercator()
       .scale(mercatorScale * zoomLevel)
-      .translate([width / 2, height / 2])
+      .translate([cx, cy])
       .precision(0.5)
-      .rotate([currentRotation[0], 0, 0]); // mercator only rotates longitude
+      .rotate([currentRotation[0], 0, 0]);
   } else {
+    const orthoRadius = Math.min(visibleWidth, height) * GLOBE_PADDING / 2;
+    baseRadius = orthoRadius;
     projection = geoOrthographic()
-      .scale(baseRadius * zoomLevel)
-      .translate([width / 2, height / 2])
+      .scale(orthoRadius * zoomLevel)
+      .translate([cx, cy])
       .clipAngle(90)
       .precision(0.5)
       .rotate(currentRotation);
@@ -101,6 +114,11 @@ export function toggleProjection() {
 
 export function getProjectionType() {
   return projectionType;
+}
+
+export function setPanelOffsets(left, right) {
+  panelOffsetLeft = left;
+  panelOffsetRight = right;
 }
 
 export function createInterpolator(from, to) {

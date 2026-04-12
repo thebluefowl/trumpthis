@@ -1,6 +1,7 @@
 import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
 import { INTERCEPTOR_COST, MISSILE_TYPES, LAUNCH_SITE_COST, MAX_LAUNCH_SITES } from '../constants.js';
+import { getBuildCostMultiplier } from '../engine/ResearchSystem.js';
 import { playerLaunchMissile, getPlayerMissileType, getEffectiveCost } from '../ai/AIManager.js';
 import { placeBattery, manualIntercept } from '../engine/InterceptorSystem.js';
 import { setTargetingPreview, setBatteryPreview } from '../rendering/CanvasOverlay.js';
@@ -173,16 +174,13 @@ export function initLaunchUI() {
       }
 
       const player = gameState.getPlayer();
-      if (player.tokens < INTERCEPTOR_COST) {
-        showToast(`Not enough tokens — need ${INTERCEPTOR_COST}◆`, 'warn');
+      const batteryCost = gameState.getBatteryCost(gameState.playerCountryId);
+      if (player.tokens < batteryCost) {
+        showToast(`Not enough tokens — need ${batteryCost}◆`, 'warn');
         return;
       }
 
-      if (!gameState.canPlaceBattery(gameState.playerCountryId)) {
-        const max = gameState.getMaxBatteries(gameState.playerCountryId);
-        showToast(`Battery limit reached (${max}/${max})`, 'warn');
-        return;
-      }
+      // No cap — cost scales progressively
 
       placeBattery(gameState.playerCountryId, clickPos, 'player');
       showToast('Interceptor battery deployed', 'success');
@@ -204,12 +202,13 @@ export function initLaunchUI() {
         return;
       }
 
-      if (player.tokens < LAUNCH_SITE_COST) {
-        showToast(`Not enough tokens — need ${LAUNCH_SITE_COST}◆`, 'warn');
+      const siloCost = Math.ceil(LAUNCH_SITE_COST * getBuildCostMultiplier(gameState.playerCountryId));
+      if (player.tokens < siloCost) {
+        showToast(`Not enough tokens — need ${siloCost}◆`, 'warn');
         return;
       }
 
-      player.tokens -= LAUNCH_SITE_COST;
+      player.tokens -= siloCost;
       player.launchSites.push({
         coords: clickPos,
         disabled: false,
@@ -260,15 +259,16 @@ function enterSiloMode() {
     showToast(`Silo limit reached (${maxSites}/${maxSites})`, 'warn');
     return;
   }
-  if (player.tokens < LAUNCH_SITE_COST) {
-    showToast(`Not enough tokens — need ${LAUNCH_SITE_COST}◆`, 'warn');
+  const siloCost = Math.ceil(LAUNCH_SITE_COST * getBuildCostMultiplier(gameState.playerCountryId));
+  if (player.tokens < siloCost) {
+    showToast(`Not enough tokens — need ${siloCost}◆`, 'warn');
     return;
   }
   cancelMode();
   mode = 'BUILDING_SILO';
   targetingStartedAt = performance.now();
   document.body.classList.add('placing');
-  showToast(`Click your territory to build silo (${LAUNCH_SITE_COST}◆)`, 'info');
+  showToast(`Click your territory to build silo (${siloCost}◆)`, 'info');
 }
 
 function enterBatteryMode() {

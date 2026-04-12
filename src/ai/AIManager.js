@@ -8,7 +8,7 @@ import { gameState } from '../state/GameState.js';
 import { createInterpolator, geoDistance } from '../rendering/Projection.js';
 import { placeBattery } from '../engine/InterceptorSystem.js';
 import { getOwnedResources } from '../engine/ResourceSystem.js';
-import { getFlightTimeMultiplier, startResearch, getCurrentResearch, canResearch } from '../engine/ResearchSystem.js';
+import { getFlightTimeMultiplier, getSupplyLineCostMultiplier, getEnemyInterceptPenalty, getNukeRadiationMultiplier, getBuildCostMultiplier, startResearch, getCurrentResearch, canResearch } from '../engine/ResearchSystem.js';
 import { TECH_DEFS } from '../state/TechTree.js';
 import { proposeAlliance, breakAllianceBetween } from '../state/Diplomacy.js';
 import { events } from '../state/events.js';
@@ -376,19 +376,37 @@ function pickStrategicTarget(targetCountry, typeKey) {
 }
 
 function tryResearch(country) {
-  if (getCurrentResearch(country.id)) return; // already researching
+  if (getCurrentResearch(country.id)) return;
 
-  // Prioritize research by nation tier
+  // AI research priorities by tier — follows the tech tree naturally
   const priorities = country.tier === 1
-    ? ['faster_missiles', 'better_intercept', 'efficient_mining', 'mirv_upgrade', 'emp_shield', 'war_economy', 'hypersonic', 'laser_defense', 'supply_lines', 'satellite_recon', 'spy_missiles', 'cyber_warfare']
+    ? [ // Superpowers: offense + economy first
+      'propulsion_upgrade', 'resource_extraction', 'radar_upgrade', 'sigint',
+      'cluster_munitions', 'industrial_base', 'point_defense', 'satellite_constellation',
+      'mirv_upgrade', 'logistics_network', 'emp_hardening', 'electronic_warfare',
+      'hypersonic_glide', 'wartime_production', 'directed_energy', 'cyber_ops',
+      'extinction_protocol', 'superpower_economy', 'aegis_network', 'total_awareness',
+    ]
     : country.tier === 2
-    ? ['better_intercept', 'efficient_mining', 'faster_missiles', 'emp_shield', 'satellite_recon', 'war_economy', 'mirv_upgrade', 'laser_defense', 'spy_missiles', 'supply_lines', 'hypersonic', 'cyber_warfare']
-    : ['efficient_mining', 'better_intercept', 'satellite_recon', 'war_economy', 'faster_missiles', 'emp_shield', 'supply_lines', 'spy_missiles', 'laser_defense', 'mirv_upgrade', 'cyber_warfare', 'hypersonic'];
+    ? [ // Major powers: balanced
+      'radar_upgrade', 'resource_extraction', 'propulsion_upgrade', 'sigint',
+      'point_defense', 'industrial_base', 'cluster_munitions', 'satellite_constellation',
+      'emp_hardening', 'logistics_network', 'mirv_upgrade', 'electronic_warfare',
+      'directed_energy', 'wartime_production', 'hypersonic_glide', 'cyber_ops',
+      'aegis_network', 'superpower_economy', 'extinction_protocol', 'total_awareness',
+    ]
+    : [ // Regional: defense + economy first
+      'resource_extraction', 'radar_upgrade', 'sigint', 'propulsion_upgrade',
+      'industrial_base', 'point_defense', 'satellite_constellation', 'cluster_munitions',
+      'logistics_network', 'emp_hardening', 'electronic_warfare', 'mirv_upgrade',
+      'wartime_production', 'directed_energy', 'cyber_ops', 'hypersonic_glide',
+      'superpower_economy', 'aegis_network', 'total_awareness', 'extinction_protocol',
+    ];
 
   for (const techId of priorities) {
     if (canResearch(country.id, techId)) {
       const tech = TECH_DEFS[techId];
-      if (country.tokens >= tech.cost * 1.5) { // AI only researches if it can comfortably afford it
+      if (country.tokens >= tech.cost * 1.5) {
         startResearch(country.id, techId);
         return;
       }
@@ -449,7 +467,8 @@ const SUPPLY_COST_FACTOR = 0.3; // +30% cost per radian of distance
 export function getEffectiveCost(fromId, typeKey, origin, target) {
   const mtype = MISSILE_TYPES[typeKey] || MISSILE_TYPES.icbm;
   const dist = geoDistance(origin, target) || 0.01;
-  const distCost = mtype.cost * SUPPLY_COST_FACTOR * dist;
+  const supplyMult = getSupplyLineCostMultiplier(fromId);
+  const distCost = mtype.cost * SUPPLY_COST_FACTOR * dist * supplyMult;
   return Math.ceil(mtype.cost + distCost);
 }
 

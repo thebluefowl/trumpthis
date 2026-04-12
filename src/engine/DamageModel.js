@@ -1,10 +1,10 @@
-// damage is now per-explosion (set by missile type)
 import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
 import { onAttack } from '../state/Diplomacy.js';
 import { renderPaths } from '../rendering/Globe.js';
 import { openClaimWindow } from './Conquest.js';
 import { geoDistance } from '../rendering/Projection.js';
+import { getDamageMultiplier, getLaunchSiteRecoveryMultiplier } from './ResearchSystem.js';
 
 // Proximity thresholds (in radians on globe surface)
 const CITY_DAMAGE_RADIUS = 0.03;      // ~190km — direct city hit
@@ -21,7 +21,9 @@ export function processImpacts() {
     if (!country || gameState.isEliminated(country.id)) continue;
 
     const impactPos = explosion.position;
-    const baseDamage = explosion.damage || 0.05;
+    // Apply attacker's tech damage multiplier
+    const techMult = explosion.attackerId ? getDamageMultiplier(explosion.attackerId, explosion.missileType || 'icbm') : 1;
+    const baseDamage = (explosion.damage || 0.05) * techMult;
 
     // === 1. City damage (population) ===
     let totalPopLoss = 0;
@@ -54,7 +56,8 @@ export function processImpacts() {
     for (const site of country.launchSites) {
       const dist = geoDistance(impactPos, site.coords);
       if (dist < INFRA_DISABLE_RADIUS) {
-        const disableDuration = dist < CITY_DAMAGE_RADIUS ? 120 : 60; // direct=120s, near=60s
+        const recoveryMult = getLaunchSiteRecoveryMultiplier(country.id);
+        const disableDuration = (dist < CITY_DAMAGE_RADIUS ? 120 : 60) * recoveryMult;
         site.disabled = true;
         site.disabledUntil = Math.max(site.disabledUntil, gameState.elapsed + disableDuration);
       }

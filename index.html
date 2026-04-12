@@ -3,129 +3,163 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>STRATCOM</title>
+  <title>DEADHAND</title>
   <link rel="icon" type="image/svg+xml" href="/logo.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/styles/main.css">
 </head>
 <body>
   <div id="app">
 
-    <!-- === PRE-GAME SCREENS (fullscreen overlays) === -->
-    <div id="screen-select" class="screen-overlay">
-      <div class="select-status">SYS:ONLINE // UPLINK:ACTIVE</div>
-      <div class="select-status-right">CLEARANCE: TOP SECRET</div>
-
-      <div class="title-block">
-        <img src="/logo.svg" alt="STRATCOM" class="title-logo">
-        <div class="title-eyebrow">GLOBAL DEFENSE NETWORK</div>
-        <div class="select-title">STRATCOM</div>
-        <div class="title-rule"></div>
-        <div class="select-subtitle">STRATEGIC COMMAND NETWORK</div>
-        <div class="title-desc">35 nations. Alliances. Betrayal. Mutual destruction.</div>
-        <button class="btn-primary btn-start" id="btn-start">ENTER</button>
-      </div>
-
-      <div class="select-version">v0.1.0</div>
+    <!-- Globe lives here permanently — never moves -->
+    <div id="globe-fixed" class="globe-fixed">
+      <svg id="globe"></svg>
+      <canvas id="overlay"></canvas>
     </div>
 
-    <!-- Pre-game Setup Screen (shared globe, swappable sidebar) -->
-    <div id="screen-setup" class="screen-setup hidden">
-      <div class="setup-sidebar">
-        <div class="setup-sidebar-content" id="setup-sidebar-content">
-          <!-- Country list or alliance list renders here -->
+    <!-- Left panels slide in/out over the globe -->
+
+    <!-- 1. Briefing Panel (start screen) -->
+    <div id="panel-briefing" class="left-panel">
+      <div class="classification-bar">TOP SECRET // NOFORN // SI-G</div>
+      <div class="panel-body">
+        <div class="briefing-logo">
+          <img src="/logo.svg" alt="DEADHAND" class="briefing-logo-img">
+        </div>
+
+        <div class="briefing-title">DEADHAND</div>
+        <div class="briefing-subtitle">GLOBAL NUCLEAR WARFARE SIMULATION</div>
+
+        <div class="briefing-rule"></div>
+
+        <div class="briefing-section">
+          <div class="briefing-label">SITUATION</div>
+          <div class="briefing-text">
+            Global tensions have escalated beyond diplomatic resolution. 35 sovereign nations
+            stand at the threshold of total war. Alliance structures are fracturing. Nuclear
+            arsenals are armed and targeting solutions are locked.
+          </div>
+        </div>
+
+        <div class="briefing-section">
+          <div class="briefing-label">MISSION</div>
+          <div class="briefing-text">
+            Assume strategic command of a nation-state. Build alliances. Deploy defensive
+            systems. Research advanced weapons platforms. Prosecute targets with precision
+            strikes. Survive.
+          </div>
+        </div>
+
+        <div class="briefing-section">
+          <div class="briefing-label">ASSETS AVAILABLE</div>
+          <div class="briefing-grid">
+            <div class="briefing-stat"><span class="briefing-stat-val">35</span><span class="briefing-stat-label">NATIONS</span></div>
+            <div class="briefing-stat"><span class="briefing-stat-val">11</span><span class="briefing-stat-label">WEAPONS</span></div>
+            <div class="briefing-stat"><span class="briefing-stat-val">4</span><span class="briefing-stat-label">BLOCS</span></div>
+            <div class="briefing-stat"><span class="briefing-stat-val">12</span><span class="briefing-stat-label">TECH</span></div>
+          </div>
+        </div>
+
+        <div class="briefing-section">
+          <div class="briefing-label">RULES OF ENGAGEMENT</div>
+          <div class="briefing-text briefing-roe">
+            All weapons systems authorized. Nuclear release requires escalation threshold.
+            Alliance commitments are non-binding. There are no rules in nuclear war —
+            only consequences.
+          </div>
+        </div>
+
+        <div class="briefing-rule"></div>
+
+        <button class="btn-primary" id="btn-start" style="width: 100%;">ACCEPT BRIEFING</button>
+
+        <div class="briefing-footer">
+          <span>DEADHAND v0.1.0</span>
         </div>
       </div>
-      <div class="setup-map">
-        <div id="globe-container-select" class="globe-container" style="flex: 1; width: 100%;">
-          <svg id="globe"></svg>
-          <canvas id="overlay"></canvas>
-        </div>
-      </div>
-      <div class="tooltip" id="tooltip"></div>
     </div>
 
-    <div id="screen-gameover" class="screen-overlay gameover-overlay hidden">
-      <div class="gameover-title" id="gameover-title">VICTORY</div>
-      <div class="gameover-stats" id="gameover-stats"></div>
-      <button class="btn-primary" id="btn-play-again">PLAY AGAIN</button>
+    <!-- 2. Setup Panel (country select / alliance picker) -->
+    <div id="panel-setup" class="left-panel hidden">
+      <div class="classification-bar">TOP SECRET // NOFORN // SI-G</div>
+      <div class="setup-sidebar-content" id="setup-sidebar-content"></div>
     </div>
 
-    <!-- === GAME LAYOUT (70/30 split) === -->
-    <div id="game-layout" class="game-layout hidden">
-
-      <!-- LEFT: Map Area (70%) -->
-      <div class="map-area">
-        <!-- Top Bar -->
-        <div class="top-bar">
-          <div class="tb-seg">
-            <span class="tb-label">DEFCON</span>
-            <span class="tb-val tb-defcon" id="tb-defcon">3</span>
-          </div>
-          <div class="tb-div"></div>
-          <div class="tb-seg">
-            <span class="tb-label">TIME</span>
-            <span class="tb-val" id="tb-clock">00:00</span>
-          </div>
-          <div class="tb-div"></div>
-          <div class="tb-seg tb-seg-threat" id="tb-threat-seg">
-            <span class="tb-label">THREATS</span>
-            <span class="tb-val tb-threat" id="tb-inbound">0</span>
-            <span class="tb-threat-eta" id="tb-threat-eta"></span>
-          </div>
-          <div class="tb-div"></div>
-          <div class="tb-seg">
-            <span class="tb-label">TOKENS</span>
-            <span class="tb-val tb-gold" id="tb-tokens">40</span>
-            <span class="tb-sub" id="tb-token-rate">+1.5/s</span>
-          </div>
-          <div class="tb-div"></div>
-          <div class="tb-seg tb-doomsday hidden" id="tb-doomsday">
-            <span class="tb-label">DOOMSDAY</span>
-            <span class="tb-val tb-red" id="tb-doom-val">05:00</span>
-          </div>
-          <div class="tb-spacer"></div>
-          <div class="tb-actions">
-            <button class="tb-btn tb-btn-attack" id="btn-attack" title="A">STRIKE</button>
-            <button class="tb-btn tb-btn-defend" id="btn-deploy" title="D">DEFEND</button>
-            <button class="tb-btn tb-btn-build" id="btn-build" title="B">SILO</button>
-            <button class="tb-btn" id="btn-map" title="M">MAP</button>
-          </div>
+    <!-- 3. Game HUD (top bar, missile strip, ticker, sidebar) -->
+    <div id="game-hud" class="hidden">
+      <!-- Top Bar -->
+      <div class="top-bar">
+        <div class="tb-seg tb-classification">
+          <span>TS//NF//SI-G</span>
         </div>
-
-        <!-- Globe/Map — SVG+canvas get moved here from select screen on game start -->
-        <div id="globe-container" class="globe-container"></div>
-
-        <!-- Missile Select Bar -->
-        <div class="missile-strip" id="missile-selector">
-          <button class="ms" data-type="drone"><b>0</b>DRN<em>3</em></button>
-          <button class="ms" data-type="tactical"><b>1</b>TAC<em>6</em></button>
-          <button class="ms" data-type="cruise"><b>2</b>CRU<em>12</em></button>
-          <button class="ms" data-type="decoy"><b>9</b>DCY<em>8</em></button>
-          <button class="ms active" data-type="icbm"><b>3</b>ICBM<em>20</em></button>
-          <button class="ms" data-type="dirty_bomb"><b>8</b>DTY<em>10</em></button>
-          <button class="ms" data-type="emp"><b>5</b>EMP<em>16</em></button>
-          <button class="ms" data-type="mirv"><b>4</b>MIRV<em>40</em></button>
-          <button class="ms" data-type="slbm"><b>7</b>SLB<em>25</em></button>
-          <button class="ms" data-type="hypersonic"><b>6</b>HYP<em>35</em></button>
-          <button class="ms ms-nuke" data-type="nuke"><b>N</b>NUKE<em>75</em></button>
+        <div class="tb-div"></div>
+        <div class="tb-seg">
+          <span class="tb-label">DEFCON</span>
+          <span class="tb-val tb-defcon" id="tb-defcon">5</span>
         </div>
-
-        <!-- News Ticker + Status -->
-        <div class="bottom-bar">
-          <div class="status-msg" id="status-msg"></div>
-          <div id="news-ticker" class="news-ticker">
-            <div class="ticker-label">LIVE</div>
-            <div class="ticker-scroll" id="ticker-scroll"></div>
-          </div>
+        <div class="tb-div"></div>
+        <div class="tb-seg">
+          <span class="tb-label">TIME</span>
+          <span class="tb-val" id="tb-clock">00:00</span>
         </div>
-
-        <!-- Claim Alerts -->
-        <div id="claim-alert" class="claim-alert"></div>
+        <div class="tb-div"></div>
+        <div class="tb-seg tb-seg-threat" id="tb-threat-seg">
+          <span class="tb-label">THREATS</span>
+          <span class="tb-val tb-threat" id="tb-inbound">0</span>
+          <span class="tb-threat-eta" id="tb-threat-eta"></span>
+        </div>
+        <div class="tb-div"></div>
+        <div class="tb-seg">
+          <span class="tb-label">TOKENS</span>
+          <span class="tb-val tb-gold" id="tb-tokens">0</span>
+          <span class="tb-sub" id="tb-token-rate">+0/s</span>
+        </div>
+        <div class="tb-div"></div>
+        <div class="tb-seg tb-doomsday hidden" id="tb-doomsday">
+          <span class="tb-label">DOOMSDAY</span>
+          <span class="tb-val tb-red" id="tb-doom-val">05:00</span>
+        </div>
+        <div class="tb-spacer"></div>
+        <div class="tb-actions">
+          <button class="tb-btn tb-btn-attack" id="btn-attack"><kbd>A</kbd> STRIKE</button>
+          <button class="tb-btn tb-btn-defend" id="btn-deploy"><kbd>D</kbd> DEFEND</button>
+          <button class="tb-btn tb-btn-build" id="btn-build"><kbd>B</kbd> SILO</button>
+          <button class="tb-btn" id="btn-map"><kbd>M</kbd> MAP</button>
+        </div>
       </div>
 
-      <!-- RIGHT: Intel Sidebar (30%) -->
+      <!-- Missile Strip -->
+      <div class="missile-strip" id="missile-selector">
+        <button class="ms" data-type="drone"><b>0</b>DRN<em>3</em></button>
+        <button class="ms" data-type="tactical"><b>1</b>TAC<em>6</em></button>
+        <button class="ms" data-type="cruise"><b>2</b>CRU<em>12</em></button>
+        <button class="ms" data-type="decoy"><b>9</b>DCY<em>8</em></button>
+        <button class="ms active" data-type="icbm"><b>3</b>ICBM<em>20</em></button>
+        <button class="ms" data-type="dirty_bomb"><b>8</b>DTY<em>10</em></button>
+        <button class="ms" data-type="emp"><b>5</b>EMP<em>16</em></button>
+        <button class="ms" data-type="mirv"><b>4</b>MIRV<em>40</em></button>
+        <button class="ms" data-type="slbm"><b>7</b>SLB<em>25</em></button>
+        <button class="ms" data-type="hypersonic"><b>6</b>HYP<em>35</em></button>
+        <button class="ms ms-nuke" data-type="nuke"><b>N</b>NUKE<em>75</em></button>
+      </div>
+
+      <!-- Weapon tooltip -->
+      <div class="weapon-tip" id="weapon-tip"></div>
+
+      <!-- Bottom bar -->
+      <div class="bottom-bar">
+        <div class="status-msg" id="status-msg"></div>
+        <div id="news-ticker" class="news-ticker">
+          <div class="ticker-label">LIVE</div>
+          <div class="ticker-scroll" id="ticker-scroll"></div>
+        </div>
+      </div>
+
+      <!-- Claim Alerts -->
+      <div id="claim-alert" class="claim-alert"></div>
+
+      <!-- Intel Sidebar -->
       <div class="intel-sidebar" id="intel-sidebar">
         <div class="sidebar-tabs">
           <button class="stab active" data-tab="overview">Overview</button>
@@ -134,10 +168,15 @@
           <button class="stab" data-tab="research">Research</button>
           <button class="stab" data-tab="log">Log</button>
         </div>
-        <div class="sidebar-content" id="sidebar-content">
-          <!-- Tab content renders here -->
-        </div>
+        <div class="sidebar-content" id="sidebar-content"></div>
       </div>
+    </div>
+
+    <!-- Game Over -->
+    <div id="screen-gameover" class="screen-overlay gameover-overlay hidden">
+      <div class="gameover-title" id="gameover-title">VICTORY</div>
+      <div class="gameover-stats" id="gameover-stats"></div>
+      <button class="btn-primary" id="btn-play-again">PLAY AGAIN</button>
     </div>
 
     <!-- Extinction Screen -->
@@ -169,6 +208,9 @@
         <button class="btn-primary extinction-btn" id="btn-restart">START OVER</button>
       </div>
     </div>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip"></div>
 
     <!-- CRT scanline overlay -->
     <div class="crt-overlay"></div>

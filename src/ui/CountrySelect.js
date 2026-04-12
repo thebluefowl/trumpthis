@@ -5,24 +5,28 @@ import { rotateTo, formatPop } from '../rendering/Globe.js';
 
 let sidebarEl = null;
 let listEl = null;
+let locked = false; // true after country is picked — prevents re-selection during alliance phase
 
 export function initCountrySelect() {
   sidebarEl = document.getElementById('setup-sidebar-content');
 
   events.on('country:click', (data) => {
     if (gameState.phase !== 'SELECT') return;
+    if (locked) return;
     data.consumed = true;
     selectCountry(data.id);
   });
 
   events.on('country:hover', ({ id }) => {
     if (gameState.phase !== 'SELECT') return;
+    if (locked) return;
     highlightCountry(id);
     highlightListItem(id);
   });
 
   events.on('country:hoverend', () => {
     if (gameState.phase !== 'SELECT') return;
+    if (locked) return;
     clearHighlight();
     clearListHighlight();
   });
@@ -111,6 +115,7 @@ function clearListHighlight() {
 function selectCountry(id) {
   const country = COUNTRY_MAP.get(id);
   if (!country) return;
+  locked = true;
   gameState.playerCountryId = id;
   rotateTo(country.centroid, 800);
   events.emit('game:start');
@@ -118,4 +123,5 @@ function selectCountry(id) {
 
 export function resetCountrySelect() {
   listEl = null;
+  locked = false;
 }

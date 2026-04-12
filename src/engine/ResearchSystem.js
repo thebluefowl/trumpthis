@@ -80,32 +80,103 @@ export function canResearch(countryId, techId) {
 
 // === Effect queries — used by other systems ===
 
+// === OFFENSIVE effects ===
 export function getFlightTimeMultiplier(countryId) {
-  if (hasTech(countryId, 'hypersonic')) return 0.6;
-  if (hasTech(countryId, 'faster_missiles')) return 0.8;
-  return 1.0;
+  let mult = 1.0;
+  if (hasTech(countryId, 'propulsion_upgrade')) mult *= 0.85;
+  if (hasTech(countryId, 'hypersonic_glide')) mult *= 0.65;
+  return mult;
 }
 
-export function getInterceptBonus(countryId) {
-  if (hasTech(countryId, 'laser_defense')) return 0.30; // sets auto to ~90%
-  if (hasTech(countryId, 'better_intercept')) return 0.15;
-  return 0;
+export function getDamageMultiplier(countryId, typeKey) {
+  let mult = 1.0;
+  if (hasTech(countryId, 'cluster_munitions') && (typeKey === 'tactical' || typeKey === 'cruise')) mult *= 1.5;
+  if (hasTech(countryId, 'extinction_protocol') && typeKey === 'nuke') mult *= 1.3;
+  return mult;
 }
 
 export function getMIRVWarheads(countryId) {
   return hasTech(countryId, 'mirv_upgrade') ? 6 : 4;
 }
 
-export function getEMPResistance(countryId) {
-  return hasTech(countryId, 'emp_shield') ? 0.5 : 1.0; // half disable time
+export function getEnemyInterceptPenalty(countryId) {
+  // Your missiles are harder to intercept
+  return hasTech(countryId, 'hypersonic_glide') ? -0.15 : 0;
 }
 
+export function getNukeRadiationMultiplier(countryId) {
+  return hasTech(countryId, 'extinction_protocol') ? 1.5 : 1.0;
+}
+
+// === DEFENSIVE effects ===
+export function getInterceptBonus(countryId) {
+  let bonus = 0;
+  if (hasTech(countryId, 'radar_upgrade')) bonus += 0.10;
+  if (hasTech(countryId, 'directed_energy')) bonus += 0.25;
+  return bonus;
+}
+
+export function getInterceptorCooldownMultiplier(countryId) {
+  return hasTech(countryId, 'point_defense') ? 0.7 : 1.0;
+}
+
+export function getEMPResistance(countryId) {
+  return hasTech(countryId, 'emp_hardening') ? 0.5 : 1.0;
+}
+
+export function getLaunchSiteRecoveryMultiplier(countryId) {
+  return hasTech(countryId, 'emp_hardening') ? 0.5 : 1.0;
+}
+
+export function getInterceptorRangeBonus(countryId) {
+  return hasTech(countryId, 'aegis_network') ? 1.2 : 1.0;
+}
+
+export function canDefendAllies(countryId) {
+  return hasTech(countryId, 'aegis_network');
+}
+
+// === INTEL effects ===
+export function hasSignalIntel(countryId) {
+  return hasTech(countryId, 'sigint');
+}
+
+export function getSatelliteScanMultiplier(countryId) {
+  return hasTech(countryId, 'satellite_constellation') ? 2.0 : 1.0;
+}
+
+export function getEMPRadiusMultiplier(countryId) {
+  return hasTech(countryId, 'electronic_warfare') ? 1.25 : 1.0;
+}
+
+export function hasCyberOps(countryId) {
+  return hasTech(countryId, 'cyber_ops');
+}
+
+export function hasTotalAwareness(countryId) {
+  return hasTech(countryId, 'total_awareness');
+}
+
+// === ECONOMIC effects ===
 export function getResourceMultiplier(countryId) {
-  return hasTech(countryId, 'efficient_mining') ? 1.25 : 1.0;
+  return hasTech(countryId, 'resource_extraction') ? 1.25 : 1.0;
+}
+
+export function getBuildCostMultiplier(countryId) {
+  return hasTech(countryId, 'industrial_base') ? 0.75 : 1.0;
+}
+
+export function getSupplyLineCostMultiplier(countryId) {
+  return hasTech(countryId, 'logistics_network') ? 0.7 : 1.0;
 }
 
 export function getWarEconomyBonus(countryId) {
-  return hasTech(countryId, 'war_economy') ? 1.5 : 1.0;
+  return hasTech(countryId, 'wartime_production') ? 1.4 : 1.0;
+}
+
+export function getSuperpowerEconomy(countryId) {
+  if (!hasTech(countryId, 'superpower_economy')) return { tokenCapBonus: 0, genMultiplier: 1.0 };
+  return { tokenCapBonus: 100, genMultiplier: 1.5 };
 }
 
 export function resetResearch() {

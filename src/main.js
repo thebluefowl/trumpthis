@@ -1,7 +1,8 @@
 import { gameState } from './state/GameState.js';
 import { events } from './state/events.js';
 import { initRelationships, resetDiplomacy } from './state/Diplomacy.js';
-import { initGlobe, initLaunchSites, initBatteries, renderPaths, rotateTo, formatPop } from './rendering/Globe.js';
+import { initGlobe, initLaunchSites, initBatteries, renderPaths, rotateTo, formatPop, setInteractable, startAutoRotate, stopAutoRotate, switchProjection } from './rendering/Globe.js';
+import { getProjectionType, setPanelOffsets } from './rendering/Projection.js';
 import { initCanvas } from './rendering/CanvasOverlay.js';
 import { initHUD } from './rendering/HUD.js';
 import { initCountrySelect, showCountrySelect, resetCountrySelect } from './ui/CountrySelect.js';
@@ -20,9 +21,16 @@ import { resetResearch } from './engine/ResearchSystem.js';
 import { resetIntel } from './state/Intel.js';
 import { initSoundEngine } from './audio/SoundEngine.js';
 import { initCheats } from './ui/Cheats.js';
+import { startMusic, stopMusic, setMusicPhase } from './audio/Music.js';
+
+// Panel visibility helpers
+function showPanel(id) { document.getElementById(id)?.classList.remove('hidden'); }
+function hidePanel(id) { document.getElementById(id)?.classList.add('hidden'); }
+function hideAllPanels() {
+  ['panel-briefing', 'panel-setup', 'game-hud', 'screen-gameover', 'screen-extinction'].forEach(hidePanel);
+}
 
 async function init() {
-  // Init globe in the select screen container first
   const svgEl = document.getElementById('globe');
   const canvasEl = document.getElementById('overlay');
 
@@ -38,31 +46,49 @@ async function init() {
   initSoundEngine();
   initCheats();
 
-  // Show title screen, hide everything else
-  document.getElementById('screen-select').classList.remove('hidden');
-  document.getElementById('screen-setup').classList.add('hidden');
-  document.getElementById('game-layout').classList.add('hidden');
+  // Ensure globe is sized correctly
+  window.dispatchEvent(new Event('resize'));
 
-  // Title → Setup screen (country select)
+  // Start: show briefing panel with rotating globe
+  hideAllPanels();
+  showPanel('panel-briefing');
+  setPanelOffsets(360, 0); // briefing panel is 400px
+  setInteractable(false);
+  startAutoRotate();
+  window.dispatchEvent(new Event('resize'));
+
+  // Start music on first interaction
+  document.addEventListener('click', () => {
+    startMusic();
+    setMusicPhase('menu');
+  }, { once: true });
+
+  // Briefing → Country select
   document.getElementById('btn-start').addEventListener('click', () => {
-    document.getElementById('screen-select').classList.add('hidden');
-    document.getElementById('screen-setup').classList.remove('hidden');
+    setMusicPhase('calm');
+    hidePanel('panel-briefing');
+    showPanel('panel-setup');
+    setPanelOffsets(360, 0); // setup panel is 300px
+    stopAutoRotate();
+    setInteractable(true);
+    if (getProjectionType() === 'orthographic') {
+      switchProjection();
+    }
     showCountrySelect();
     window.dispatchEvent(new Event('resize'));
   });
 
-  // Country selected → swap sidebar to alliance picker
+  // Country selected → Alliance picker (swap sidebar content)
   events.on('game:start', () => {
     showAlliancePicker(gameState.playerCountryId);
   });
 
-  // Alliance selected → start game
+  // Alliance selected → Start game
   events.on('bloc:selected', (blocId) => {
     startGame(blocId);
   });
 
   events.on('game:over', onGameOver);
-
   document.getElementById('btn-play-again').addEventListener('click', restartGame);
 }
 
@@ -70,19 +96,11 @@ function startGame(blocId) {
   gameState.startGame(gameState.playerCountryId, blocId);
   initRelationships(blocId);
 
-  // Hide all pre-game screens, show game layout
-  document.getElementById('screen-select').classList.add('hidden');
-  document.getElementById('screen-setup').classList.add('hidden');
-  document.getElementById('game-layout').classList.remove('hidden');
+  hideAllPanels();
+  showPanel('game-hud');
+  setPanelOffsets(0, 300);
+  setMusicPhase('tension');
 
-  // Move globe SVG + canvas into the game layout container
-  const globeContainer = document.getElementById('globe-container');
-  const svgEl = document.getElementById('globe');
-  const canvasEl = document.getElementById('overlay');
-  globeContainer.appendChild(svgEl);
-  globeContainer.appendChild(canvasEl);
-
-  // Trigger resize so globe fills the map area
   window.dispatchEvent(new Event('resize'));
 
   initLaunchSites();
@@ -105,13 +123,16 @@ function startGame(blocId) {
 function onGameOver({ result }) {
   stopGameLoop();
 
+  if (result === 'extinction') {
+    setMusicPhase('extinction');
+    showExtinctionScreen();
+    return;
+  }
+
   const titleEl = document.getElementById('gameover-title');
   const statsEl = document.getElementById('gameover-stats');
 
-  if (result === 'extinction') {
-    showExtinctionScreen();
-    return;
-  } else if (result === 'victory') {
+  if (result === 'victory') {
     titleEl.textContent = 'VICTORY';
     titleEl.className = 'gameover-title victory';
   } else if (result === 'defeat') {
@@ -135,7 +156,7 @@ function onGameOver({ result }) {
     <div>Population Remaining: <span>${player ? formatPop(player.population) : '0'}</span></div>
   `;
 
-  document.getElementById('screen-gameover').classList.remove('hidden');
+  showPanel('screen-gameover');
 }
 
 function showExtinctionScreen() {
@@ -157,10 +178,10 @@ function showExtinctionScreen() {
     `;
   }
 
-  document.getElementById('screen-extinction').classList.remove('hidden');
+  showPanel('screen-extinction');
 
   document.getElementById('btn-restart').addEventListener('click', () => {
-    document.getElementById('screen-extinction').classList.add('hidden');
+    hidePanel('screen-extinction');
     restartGame();
   });
 }
@@ -172,19 +193,15 @@ function restartGame() {
   resetSidebar();
   resetNewsTicker();
 
-  document.getElementById('screen-gameover').classList.add('hidden');
-  document.getElementById('game-layout').classList.add('hidden');
-  document.getElementById('screen-setup').classList.add('hidden');
-  document.getElementById('screen-select').classList.remove('hidden');
-
-  // Move globe back to setup screen
-  const selectContainer = document.getElementById('globe-container-select');
-  const svgEl = document.getElementById('globe');
-  const canvasEl = document.getElementById('overlay');
-  if (selectContainer) {
-    selectContainer.appendChild(svgEl);
-    selectContainer.appendChild(canvasEl);
+  hideAllPanels();
+  showPanel('panel-briefing');
+  setPanelOffsets(360, 0);
+  setInteractable(false);
+  setMusicPhase('menu');
+  if (getProjectionType() === 'mercator') {
+    switchProjection();
   }
+  startAutoRotate();
 
   window.dispatchEvent(new Event('resize'));
   renderPaths();

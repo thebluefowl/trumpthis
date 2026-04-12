@@ -38,11 +38,52 @@ export function initHUD() {
   });
 
   // Missile type selectors
+  const weaponTip = document.getElementById('weapon-tip');
   document.querySelectorAll('.ms').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       setPlayerMissileType(btn.dataset.type);
       updateMissileSelector();
+    });
+
+    btn.addEventListener('mouseenter', () => {
+      const typeKey = btn.dataset.type;
+      const mtype = MISSILE_TYPES[typeKey];
+      if (!mtype) return;
+
+      const locked = mtype.unlockAt !== undefined && gameState.elapsed < mtype.unlockAt;
+      const unlockIn = locked ? Math.ceil(mtype.unlockAt - gameState.elapsed) : 0;
+      const effectiveCost = gameState.playerCountryId
+        ? `~${mtype.cost}+` : `${mtype.cost}`;
+
+      const dmgText = mtype.damage > 0 ? `${(mtype.damage * 100).toFixed(0)}%` : 'NONE';
+      const speedText = mtype.baseFlight <= 2 ? 'FAST' : mtype.baseFlight <= 5 ? 'MED' : 'SLOW';
+      const interceptText = `${(mtype.autoIntercept * 100).toFixed(0)}%`;
+      const special = mtype.empDuration ? `EMP ${mtype.empDuration}s`
+        : mtype.warheads ? `${mtype.warheads} WARHEADS`
+        : mtype.contamination ? `RADIATION ${mtype.contaminationDuration}s`
+        : mtype.decoyCount ? `${mtype.decoyCount} FAKES`
+        : mtype.launchFromOcean ? 'SUB-LAUNCHED'
+        : mtype.isDrone ? 'TARGETS INFRA'
+        : mtype.isNuke ? 'NUCLEAR'
+        : '';
+
+      weaponTip.innerHTML = `
+        <div class="weapon-tip-name">${mtype.name}${locked ? ` — LOCKED (${unlockIn}s)` : ''}</div>
+        <div class="weapon-tip-desc">${mtype.description}</div>
+        <div class="weapon-tip-stats">
+          <div class="weapon-tip-stat"><span class="weapon-tip-stat-label">COST</span><span class="weapon-tip-stat-val">${mtype.cost}◆</span></div>
+          <div class="weapon-tip-stat"><span class="weapon-tip-stat-label">DAMAGE</span><span class="weapon-tip-stat-val">${dmgText}</span></div>
+          <div class="weapon-tip-stat"><span class="weapon-tip-stat-label">SPEED</span><span class="weapon-tip-stat-val">${speedText}</span></div>
+          <div class="weapon-tip-stat"><span class="weapon-tip-stat-label">INTERCEPT</span><span class="weapon-tip-stat-val">${interceptText}</span></div>
+          ${special ? `<div class="weapon-tip-stat"><span class="weapon-tip-stat-label">SPECIAL</span><span class="weapon-tip-stat-val">${special}</span></div>` : ''}
+        </div>
+      `;
+      weaponTip.classList.add('visible');
+    });
+
+    btn.addEventListener('mouseleave', () => {
+      weaponTip.classList.remove('visible');
     });
   });
 

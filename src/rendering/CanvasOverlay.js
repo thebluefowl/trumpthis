@@ -1,6 +1,7 @@
 import { COLORS, EXPLOSION_DURATION, TRAIL_FADE_TIME, INTERCEPT_TRAIL_DURATION, INTERCEPT_FLASH_DURATION, INTERCEPTOR_RANGE } from '../constants.js';
 import { getAllNodes } from '../engine/ResourceSystem.js';
 import { RESOURCE_COLORS } from '../state/Resources.js';
+import { COUNTRIES } from '../state/countryData.js';
 import { getSatelliteAngle } from '../state/Intel.js';
 import { gameState } from '../state/GameState.js';
 import {
@@ -170,23 +171,43 @@ function drawMissile(missile) {
     ctx.stroke();
   }
 
-  // Draw missile head
+  // Draw missile head — arrowhead pointing in direction of travel
   const headPos = getArcScreenPos(missile, missile.progress);
   if (headPos) {
-    ctx.beginPath();
-    ctx.arc(headPos[0], headPos[1], 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
+    // Get direction from a slightly earlier point
+    const prevT = Math.max(0, missile.progress - 0.02);
+    const prevPos = getArcScreenPos(missile, prevT);
+    let angle = 0;
+    if (prevPos) {
+      angle = Math.atan2(headPos[1] - prevPos[1], headPos[0] - prevPos[0]);
+    }
 
-    // Glow
+    const size = missile.mtype?.isNuke ? 6 : missile.isWarhead ? 3 : 4;
+
+    // Arrowhead
+    ctx.save();
+    ctx.translate(headPos[0], headPos[1]);
+    ctx.rotate(angle);
     ctx.beginPath();
-    ctx.arc(headPos[0], headPos[1], 6, 0, Math.PI * 2);
+    ctx.moveTo(size, 0);                    // tip
+    ctx.lineTo(-size * 0.7, -size * 0.5);  // left wing
+    ctx.lineTo(-size * 0.3, 0);            // notch
+    ctx.lineTo(-size * 0.7, size * 0.5);   // right wing
+    ctx.closePath();
+    ctx.fillStyle = missile.mtype?.isNuke ? '#ff4444' : '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    // Glow behind the arrowhead
+    const glowSize = size * 2;
     const glow = ctx.createRadialGradient(
       headPos[0], headPos[1], 0,
-      headPos[0], headPos[1], 6
+      headPos[0], headPos[1], glowSize
     );
-    glow.addColorStop(0, withAlpha(trailColor, 0.6));
+    glow.addColorStop(0, withAlpha(trailColor, 0.5));
     glow.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(headPos[0], headPos[1], glowSize, 0, Math.PI * 2);
     ctx.fillStyle = glow;
     ctx.fill();
   }
@@ -576,37 +597,107 @@ function drawSatelliteSweep() {
   const angle = getSatelliteAngle();
   const sweepLon = angle - 180;
 
-  // Draw a faint vertical line at the satellite's longitude
-  const numPoints = 20;
-  ctx.beginPath();
-  let started = false;
-  for (let i = 0; i <= numPoints; i++) {
-    const lat = -80 + (160 * i / numPoints);
-    const lonLat = [sweepLon, lat];
-    if (!isVisible(lonLat)) continue;
-    const pos = projectPoint(lonLat);
-    if (!pos) continue;
-    if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
-    else ctx.lineTo(pos[0], pos[1]);
-  }
-  ctx.strokeStyle = 'rgba(34, 211, 238, 0.15)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  if (getProjectionType() === 'mercator') {
+    // Realistic satellite ground track on Mercator
+    // Orbit: ~90 min period, 65° inclination, Earth rotates underneath
+    const inclination = 65;
+    const orbitalPeriod = 60; // game seconds for one full orbit
+    const orbitPhase = (angle / 360) * Math.PI * 2; // current orbital position
 
-  // Glow band
-  ctx.beginPath();
-  started = false;
-  for (let i = 0; i <= numPoints; i++) {
-    const lat = -80 + (160 * i / numPoints);
-    if (!isVisible([sweepLon, lat])) continue;
-    const pos = projectPoint([sweepLon, lat]);
-    if (!pos) continue;
-    if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
-    else ctx.lineTo(pos[0], pos[1]);
+    // Current satellite position
+    const satLat = inclination * Math.sin(orbitPhase);
+    const satLon = sweepLon;
+    const satPos = projectPoint([satLon, satLat]);
+
+    // Ground track — same formula as satellite position, extended over time
+    // The satellite moves at a constant rate through angle (sweepLon)
+    // and bobs north/south via sin(orbitPhase)
+    // So the ground track is just this formula evaluated at past/future times
+    const numPoints = 300;
+    const trackDuration = 360; // degrees of longitude to show (full wrap)
+
+    ctx.beginPath();
+    let started = false;
+    let lastPos = null;
+    for (let i = 0; i <= numPoints; i++) {
+      const offset = ((i / numPoints) - 0.5) * trackDuration; // -180 to +180
+      const trackLon = satLon + offset;
+      const trackOrbitPhase = orbitPhase + (offset / 360) * Math.PI * 2;
+      const trackLat = inclination * Math.sin(trackOrbitPhase);
+
+      const pos = projectPoint([trackLon, trackLat]);
+      if (!pos) { started = false; lastPos = null; continue; }
+      if (lastPos && Math.abs(pos[0] - lastPos[0]) > 200) {
+        started = false;
+      }
+      if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
+      else ctx.lineTo(pos[0], pos[1]);
+      lastPos = pos;
+    }
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.04)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Satellite dot
+    if (satPos) {
+      ctx.beginPath();
+      ctx.arc(satPos[0], satPos[1], 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(34, 211, 238, 0.6)';
+      ctx.fill();
+
+      // Scan footprint circle
+      const footprintRadius = 30;
+      ctx.beginPath();
+      ctx.arc(satPos[0], satPos[1], footprintRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.15)';
+      ctx.setLineDash([3, 5]);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Footprint fill
+      const grad = ctx.createRadialGradient(satPos[0], satPos[1], 0, satPos[0], satPos[1], footprintRadius);
+      grad.addColorStop(0, 'rgba(34, 211, 238, 0.04)');
+      grad.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(satPos[0], satPos[1], footprintRadius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  } else {
+    // Orthographic: sample arc on globe
+    const numPoints = 30;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i <= numPoints; i++) {
+      const lat = -85 + (170 * i / numPoints);
+      const lonLat = [sweepLon, lat];
+      if (!isVisible(lonLat)) continue;
+      const pos = projectPoint(lonLat);
+      if (!pos) continue;
+      if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
+      else ctx.lineTo(pos[0], pos[1]);
+    }
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.12)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Glow
+    ctx.beginPath();
+    started = false;
+    for (let i = 0; i <= numPoints; i++) {
+      const lat = -85 + (170 * i / numPoints);
+      const lonLat = [sweepLon, lat];
+      if (!isVisible(lonLat)) continue;
+      const pos = projectPoint(lonLat);
+      if (!pos) continue;
+      if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
+      else ctx.lineTo(pos[0], pos[1]);
+    }
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.04)';
+    ctx.lineWidth = 20;
+    ctx.stroke();
   }
-  ctx.strokeStyle = 'rgba(34, 211, 238, 0.05)';
-  ctx.lineWidth = 20;
-  ctx.stroke();
 }
 
 // === Resource Nodes ===
@@ -651,35 +742,46 @@ function drawResourceNodes() {
 
 // === City Lights ===
 function drawCityLights() {
-  if (gameState.phase !== 'PLAYING') return;
+  const now = performance.now() / 1000;
 
-  for (const [id, country] of gameState.countries) {
-    if (gameState.isEliminated(id)) continue;
+  // Use live game data if playing, otherwise static country data for title screen
+  const countries = gameState.phase === 'PLAYING'
+    ? [...gameState.countries.values()].filter(c => !gameState.isEliminated(c.id))
+    : COUNTRIES;
 
-    for (const city of country.cities) {
+  for (const country of countries) {
+    for (const city of (country.cities || [])) {
       if (!isVisible(city.coords)) continue;
       const screenPos = projectPoint(city.coords);
       if (!screenPos) continue;
 
-      const popRatio = city.startingPopulation > 0 ? city.population / city.startingPopulation : 0;
-      const brightness = city.destroyed ? 0.03 : popRatio * 0.25;
+      const popRatio = city.startingPopulation > 0
+        ? city.population / city.startingPopulation
+        : (city.popShare || 0.5); // static data uses popShare
+
+      // Per-city flicker — unique phase from coords hash
+      const hash = (city.coords[0] * 73.7 + city.coords[1] * 31.3) % 1;
+      const flickerSpeed = 1.5 + hash * 3; // 1.5-4.5 Hz
+      const flicker = 0.7 + 0.3 * Math.sin(now * flickerSpeed * 6.28 + hash * 100);
+
+      const brightness = city.destroyed ? 0.02 : popRatio * 0.25 * flicker;
 
       // Glow
-      const r = 1.5 + popRatio * 2;
+      const r = 1.5 + popRatio * 2.5;
       const grad = ctx.createRadialGradient(
         screenPos[0], screenPos[1], 0,
-        screenPos[0], screenPos[1], r * 2.5
+        screenPos[0], screenPos[1], r * 3
       );
       const glowColor = city.destroyed ? '#331100' : '#ffdd88';
-      grad.addColorStop(0, withAlpha(glowColor, brightness * 0.5));
+      grad.addColorStop(0, withAlpha(glowColor, brightness * 0.6));
       grad.addColorStop(1, 'transparent');
 
       ctx.beginPath();
-      ctx.arc(screenPos[0], screenPos[1], r * 2.5, 0, Math.PI * 2);
+      ctx.arc(screenPos[0], screenPos[1], r * 3, 0, Math.PI * 2);
       ctx.fillStyle = grad;
       ctx.fill();
 
-      // Core dot — color indicates health
+      // Core dot — color indicates health, flickers
       const coreColor = city.destroyed ? '#440000' :
         popRatio > 0.6 ? '#ffeecc' :
         popRatio > 0.3 ? '#ffaa44' : '#ff4422';
