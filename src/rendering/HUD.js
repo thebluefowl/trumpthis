@@ -5,6 +5,9 @@ import { setPlayerMissileType, getPlayerMissileType } from '../ai/AIManager.js';
 import { MISSILE_TYPES, ESCALATION_START, MATCH_TIMEOUT } from '../constants.js';
 import { isEscalationActive, getTimeRemaining, getEscalationTick } from '../engine/Escalation.js';
 import { getClaimWindows, playerClaimTerritory } from '../engine/Conquest.js';
+import { launchSatellite, getSatelliteCount, getSatLaunches } from '../state/Intel.js';
+import { SATELLITE_LAUNCH_COST, MAX_SATELLITES } from '../constants.js';
+import { showToast } from '../ui/Toast.js';
 import { TOKEN_RATES } from '../constants.js';
 import { getTokenMultiplier } from '../engine/Escalation.js';
 
@@ -29,6 +32,34 @@ export function initHUD() {
   document.getElementById('btn-build')?.addEventListener('click', (e) => {
     e.stopPropagation();
     events.emit('build:click');
+  });
+
+  // Satellite launch
+  document.getElementById('btn-satellite')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const count = getSatelliteCount();
+    if (count >= MAX_SATELLITES) {
+      showToast(`Maximum ${MAX_SATELLITES} satellites in orbit`, 'warn');
+      return;
+    }
+    const success = launchSatellite();
+    if (success) {
+      showToast(`Satellite launched! (${getSatelliteCount()}/${MAX_SATELLITES} in orbit)`, 'success');
+    } else {
+      showToast(`Not enough tokens — need ${SATELLITE_LAUNCH_COST}◆`, 'warn');
+    }
+  });
+
+  // S key shortcut for satellite
+  document.addEventListener('keydown', (e) => {
+    if (gameState.phase !== 'PLAYING') return;
+    if (e.key === 's' || e.key === 'S') {
+      if (e.target.tagName === 'INPUT') return;
+      const count = getSatelliteCount();
+      if (count >= MAX_SATELLITES) return;
+      const success = launchSatellite();
+      if (success) showToast(`Satellite launched! (${getSatelliteCount()}/${MAX_SATELLITES})`, 'success');
+    }
   });
 
   // Map toggle
@@ -90,7 +121,7 @@ export function initHUD() {
   // Number key shortcuts
   document.addEventListener('keydown', (e) => {
     if (gameState.phase !== 'PLAYING') return;
-    const typeMap = { '1': 'tactical', '2': 'cruise', '3': 'icbm', '4': 'mirv', '5': 'emp', '6': 'hypersonic', '7': 'slbm', '8': 'dirty_bomb', '9': 'decoy', '0': 'drone', 'n': 'nuke' };
+    const typeMap = { '1': 'drone', '2': 'tactical', '3': 'cruise', '4': 'decoy', '5': 'icbm', '6': 'dirty_bomb', '7': 'emp', '8': 'mirv', '9': 'slbm', '0': 'hypersonic', 'n': 'nuke' };
     if (typeMap[e.key]) {
       const mtype = MISSILE_TYPES[typeMap[e.key]];
       if (mtype && mtype.unlockAt !== undefined && gameState.elapsed < mtype.unlockAt) return;
@@ -174,6 +205,46 @@ export function renderHUD() {
   // Update missile selector (locked/unlocked states)
   updateMissileSelector();
 
+  // Satellite button — show launch timer or count
+  const satBtn = document.getElementById('btn-satellite');
+  if (satBtn) {
+    const launches = getSatLaunches();
+    const count = getSatelliteCount();
+    if (launches.length > 0) {
+      const launch = launches[0];
+      const totalDur = launch.launchDuration + launch.transferDuration;
+      const remaining = Math.ceil(totalDur - (gameState.elapsed - launch.startTime));
+      const age = gameState.elapsed - launch.startTime;
+      const phase = age < launch.launchDuration ? 'LAUNCH' : 'INSERTION';
+      satBtn.innerHTML = `<kbd>S</kbd> ${phase} ${remaining}s`;
+      satBtn.disabled = true;
+    } else if (count >= MAX_SATELLITES) {
+      satBtn.innerHTML = `<kbd>S</kbd> SAT ${count}/${MAX_SATELLITES}`;
+      satBtn.disabled = true;
+    } else {
+      satBtn.innerHTML = `<kbd>S</kbd> SAT ${count}/${MAX_SATELLITES} ${SATELLITE_LAUNCH_COST}◆`;
+      satBtn.disabled = false;
+    }
+  }
+
+  // Action button affordability
+  const tokens = player.tokens;
+  const currentType = getPlayerMissileType();
+  const currentMtype = MISSILE_TYPES[currentType];
+  const attackCost = currentMtype ? currentMtype.cost : 6; // base cost minimum
+
+  const attackBtn = document.getElementById('btn-attack');
+  if (attackBtn) attackBtn.style.opacity = tokens >= attackCost ? '' : '0.3';
+
+  const deployBtn = document.getElementById('btn-deploy');
+  const batteryCost = gameState.getBatteryCost(player.id);
+  if (deployBtn) deployBtn.style.opacity = tokens >= batteryCost ? '' : '0.3';
+
+  const buildBtn = document.getElementById('btn-build');
+  const siloCount = player.launchSites.length;
+  const siloCost = 15 + siloCount * 3;
+  if (buildBtn) buildBtn.style.opacity = tokens >= siloCost ? '' : '0.3';
+
   // Claim alerts
   renderClaimAlerts();
 }
@@ -204,12 +275,15 @@ function renderClaimAlerts() {
 function updateMissileSelector() {
   const current = getPlayerMissileType();
   const elapsed = gameState.elapsed || 0;
+  const playerTokens = gameState.getPlayer()?.tokens || 0;
   document.querySelectorAll('.ms').forEach(btn => {
     const typeKey = btn.dataset.type;
     const mtype = MISSILE_TYPES[typeKey];
     const locked = mtype && mtype.unlockAt !== undefined && elapsed < mtype.unlockAt;
+    const cantAfford = mtype && !locked && playerTokens < mtype.cost;
     btn.classList.toggle('active', typeKey === current);
     btn.classList.toggle('locked', locked);
+    btn.classList.toggle('unaffordable', cantAfford);
     btn.disabled = locked;
     if (locked) {
       const remaining = Math.ceil(mtype.unlockAt - elapsed);

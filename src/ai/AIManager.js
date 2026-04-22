@@ -269,8 +269,8 @@ function launchAtTarget(fromCountry, toCountry) {
 
   const launchSite = activeSites[Math.floor(Math.random() * activeSites.length)];
 
-  // Strategic target selection
-  const target = pickStrategicTarget(toCountry, typeKey);
+  // Strategic target selection — accuracy degrades with distance
+  const target = pickStrategicTarget(toCountry, typeKey, fromCountry);
   if (!target) {
     console.log(`[AI] ${fromCountry.name} no valid target point for ${typeKey} against ${toCountry.name}. Cities:`, toCountry.cities?.length, 'centroid:', toCountry.centroid);
     return;
@@ -291,10 +291,40 @@ function launchAtTarget(fromCountry, toCountry) {
   }
 }
 
-function pickStrategicTarget(targetCountry, typeKey) {
-  const batteries = gameState.interceptors.filter(b => b.countryId === targetCountry.id);
-  const activeSites = targetCountry.launchSites.filter(s => !s.disabled);
+function pickStrategicTarget(targetCountry, typeKey, fromCountry) {
+  // Distance-based intelligence degradation
+  // Nearby: full intel (cities, batteries, launch sites)
+  // Mid-range: cities only
+  // Distant: centroid only
+  const dist = fromCountry ? geoDistance(fromCountry.centroid, targetCountry.centroid) : 0;
+  const isSLBM = typeKey === 'slbm'; // subs bypass distance penalty
+
+  const CLOSE_RANGE = 0.4;   // ~2,500 km — same continent
+  const MID_RANGE = 1.0;     // ~6,400 km — cross-continental
+
+  const hasDetailedIntel = isSLBM || dist < CLOSE_RANGE;
+  const hasCityIntel = isSLBM || dist < MID_RANGE;
+
+  // Distant targets — can only hit centroid
+  if (!hasCityIntel) {
+    // Add some random scatter around centroid (imprecise targeting)
+    const scatter = 2 + Math.random() * 3;
+    const angle = Math.random() * Math.PI * 2;
+    return [
+      targetCountry.centroid[0] + Math.cos(angle) * scatter,
+      targetCountry.centroid[1] + Math.sin(angle) * scatter,
+    ];
+  }
+
   const liveCities = targetCountry.cities.filter(c => !c.destroyed && c.population > 0);
+
+  // Mid-range — can target cities but not infrastructure
+  const batteries = hasDetailedIntel
+    ? gameState.interceptors.filter(b => b.countryId === targetCountry.id)
+    : [];
+  const activeSites = hasDetailedIntel
+    ? targetCountry.launchSites.filter(s => !s.disabled)
+    : [];
   const isHeavilyDefended = batteries.length >= 3;
 
   // === EMP: always target interceptor clusters ===

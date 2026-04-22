@@ -43,7 +43,8 @@ export function showCountrySelect() {
 
   sidebarEl.innerHTML = `
     <div class="setup-header">
-      <div class="setup-title">SELECT NATION</div>
+      <button class="setup-back" id="btn-back-briefing">BACK</button>
+      <div class="setup-title" style="flex:1; text-align:right;">SELECT NATION</div>
     </div>
     <div class="setup-list" id="country-list">
       ${sorted.map(c => `
@@ -59,7 +60,12 @@ export function showCountrySelect() {
   listEl = document.getElementById('country-list');
 
   listEl.querySelectorAll('.country-pick').forEach(el => {
-    el.addEventListener('click', () => selectCountry(el.dataset.id));
+    el.addEventListener('click', () => {
+      // Center on the country before selecting
+      const country = COUNTRY_MAP.get(el.dataset.id);
+      if (country) rotateTo(country.centroid, 600);
+      selectCountry(el.dataset.id);
+    });
     el.addEventListener('mouseenter', () => {
       highlightCountry(el.dataset.id);
       highlightListItem(el.dataset.id);
@@ -68,6 +74,11 @@ export function showCountrySelect() {
       clearHighlight();
       clearListHighlight();
     });
+  });
+
+  // Back button
+  document.getElementById('btn-back-briefing')?.addEventListener('click', () => {
+    events.emit('nav:back-to-briefing');
   });
 }
 

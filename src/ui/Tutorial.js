@@ -63,7 +63,7 @@ export function initTutorial() {
 
 export function startTutorial() {
   // Only show on first game (check localStorage)
-  if (localStorage.getItem('deadhand_tutorial_done')) return;
+  if (localStorage.getItem('nullstrike_tutorial_done')) return;
 
   active = true;
   currentStep = 0;
@@ -113,7 +113,7 @@ function advanceStep() {
 function endTutorial() {
   active = false;
   containerEl.classList.add('hidden');
-  localStorage.setItem('deadhand_tutorial_done', '1');
+  localStorage.setItem('nullstrike_tutorial_done', '1');
   if (checkInterval) {
     clearInterval(checkInterval);
     checkInterval = null;

@@ -27,7 +27,7 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font);
+  font-family: var(--mono);
   font-size: 13px;
 }
 
@@ -52,25 +52,29 @@ html, body {
 
 /* briefing panel uses .left-panel base — no extra width/padding */
 
-.briefing-logo {
-  display: flex; justify-content: center;
-  margin-bottom: 16px;
-}
-
-.briefing-logo-img {
-  width: 60px; height: auto; opacity: 0.6;
+.briefing-body {
+  display: flex; flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
 }
 
 .briefing-title {
-  font-family: var(--mono); font-size: 28px; font-weight: 700;
-  color: var(--text-bright); letter-spacing: 6px;
-  text-align: center; margin-bottom: 4px;
+  font-family: var(--mono); font-size: 36px; font-weight: 700;
+  color: var(--text-bright); letter-spacing: 8px;
+  line-height: 1.1;
+  margin-bottom: 12px;
 }
 
-.briefing-subtitle {
-  font-family: var(--mono); font-size: 9px;
+.briefing-tagline {
+  font-family: var(--mono); font-size: 11px;
   color: var(--text-dim); letter-spacing: 2px;
-  text-align: center; margin-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+.briefing-version {
+  font-family: var(--mono); font-size: 9px;
+  color: var(--text-dim); opacity: 0.4;
+  margin-top: 12px;
 }
 
 .briefing-rule {
@@ -78,58 +82,28 @@ html, body {
   margin: 12px 0;
 }
 
-.briefing-section {
-  margin-bottom: 14px;
+.briefing-doc {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text); line-height: 1.8;
 }
 
-.briefing-label {
-  font-family: var(--mono); font-size: 9px; font-weight: 600;
+.briefing-doc-header {
+  font-size: 9px; font-weight: 600;
   color: var(--text-dim); letter-spacing: 2px;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
 
-.briefing-text {
-  font-family: var(--font); font-size: 12px;
-  color: var(--text); line-height: 1.7;
+.briefing-doc p {
+  margin: 0 0 10px 0;
 }
 
-.briefing-roe {
-  color: var(--amber); font-style: italic;
+.briefing-warning {
+  color: var(--amber);
 }
 
-.briefing-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
+/* stat grid removed — briefing is text-only */
 
-.briefing-stat {
-  background: #0a0c14;
-  border: 1px solid var(--panel-border);
-  padding: 8px 10px;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-}
-
-.briefing-stat-val {
-  font-family: var(--mono); font-size: 20px; font-weight: 700;
-  color: var(--text-bright);
-}
-
-.briefing-stat-label {
-  font-family: var(--mono); font-size: 8px;
-  color: var(--text-dim); letter-spacing: 1px;
-}
-
-.briefing-btn {
-  width: 100%; margin-top: auto; padding-top: 16px;
-}
-
-.briefing-footer {
-  display: flex; justify-content: space-between;
-  margin-top: 12px;
-  font-family: var(--mono); font-size: 8px;
-  color: var(--text-dim); letter-spacing: 1px;
-  opacity: 0.4;
-}
+/* briefing footer removed — version shown inline */
 
 /* Right side — globe */
 .briefing-map {
@@ -188,10 +162,23 @@ html, body {
 }
 
 .setup-header {
-  padding: 10px 20px;
+  padding: 8px 20px;
   border-bottom: 1px solid var(--panel-border);
   flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+  line-height: 1;
 }
+
+.setup-back {
+  background: none; border: none;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--text-dim); cursor: pointer;
+  padding: 0; letter-spacing: 1px;
+  transition: color 0.1s;
+  display: flex; align-items: center;
+  line-height: 1;
+}
+.setup-back:hover { color: var(--text-bright); }
 
 .setup-title {
   font-family: var(--mono); font-size: 11px; font-weight: 600;
@@ -280,6 +267,19 @@ html, body {
   background: rgba(37, 99, 235, 0.08);
 }
 
+#btn-start {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  padding: 12px 28px;
+  font-size: 12px;
+  letter-spacing: 3px;
+}
+#btn-start:hover {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
 /* === Alliance Picker === */
 .picker-title {
   font-family: var(--mono); font-size: 11px; font-weight: 600;
@@ -321,7 +321,7 @@ html, body {
 .gameover-title { font-family: var(--mono); font-size: 32px; font-weight: 700; letter-spacing: 6px; }
 .gameover-title.victory { color: var(--green-bright); }
 .gameover-title.defeat { color: var(--red); }
-.gameover-subtitle { font-family: var(--font); font-size: 13px; color: var(--text-dim); text-align: center; margin-bottom: 12px; }
+.gameover-subtitle { font-family: var(--mono); font-size: 13px; color: var(--text-dim); text-align: center; margin-bottom: 12px; }
 .gameover-stats { font-family: var(--mono); font-size: 11px; color: var(--text-dim); text-align: center; line-height: 2.2; }
 .gameover-stats span { color: var(--text-bright); }
 
@@ -404,6 +404,8 @@ html, body {
 .tb-btn-defend:hover { background: rgba(56,189,248,0.06); }
 .tb-btn-build { color: var(--green-bright); }
 .tb-btn-build:hover { background: rgba(74,222,128,0.06); }
+.tb-btn-intel { color: var(--cyan); }
+.tb-btn-intel:hover { background: rgba(56,189,248,0.06); }
 .tb-btn kbd {
   font-family: var(--mono); font-size: 9px;
   background: var(--panel-border); color: var(--text-dim);
@@ -412,7 +414,7 @@ html, body {
 
 /* === Missile Strip === */
 .missile-strip {
-  position: fixed; bottom: 48px; left: 0; right: 300px;
+  position: fixed; bottom: 26px; left: 0; right: 300px;
   display: flex; justify-content: center;
   height: 26px; background: #0a0c14;
   border-top: 1px solid var(--panel-border);
@@ -430,7 +432,8 @@ html, body {
 .ms:hover { color: var(--text); background: rgba(255,255,255,0.02); }
 .ms.active { color: var(--text-bright); border-bottom-color: var(--accent); }
 .ms.active b { background: var(--accent); color: #fff; }
-.ms.locked { opacity: 0.2; cursor: not-allowed; }
+.ms.locked { opacity: 0.15; cursor: not-allowed; }
+.ms.unaffordable { opacity: 0.35; }
 .ms-nuke { color: var(--red-dim); }
 .ms-nuke:hover { color: var(--red); }
 .ms-nuke.active { color: var(--red); border-bottom-color: var(--red); }
@@ -493,7 +496,8 @@ html, body {
 }
 
 .status-msg {
-  height: 22px;
+  display: none;
+  height: 0;
   background: #08080e;
   padding: 0 12px;
   font-family: var(--mono);
@@ -558,7 +562,7 @@ html, body {
 .btn-claim {
   background: none; border: 1px solid var(--green);
   color: var(--green-bright); padding: 3px 10px;
-  font-family: var(--font); font-size: 11px; cursor: pointer;
+  font-family: var(--mono); font-size: 11px; cursor: pointer;
 }
 .btn-claim:hover { background: rgba(74, 222, 128, 0.1); }
 
@@ -577,7 +581,7 @@ html, body {
 }
 .stab {
   flex: 1; padding: 8px 4px; background: none; border: none;
-  color: var(--text-dim); font-family: var(--font);
+  color: var(--text-dim); font-family: var(--mono);
   font-size: 11px; font-weight: 500; cursor: pointer;
   border-bottom: 2px solid transparent; transition: all 0.15s;
 }
@@ -613,7 +617,7 @@ html, body {
 /* Sidebar buttons */
 .sb-btn {
   background: none; border: 1px solid var(--panel-border);
-  color: var(--text); padding: 4px 10px; font-family: var(--font);
+  color: var(--text); padding: 4px 10px; font-family: var(--mono);
   font-size: 11px; cursor: pointer; transition: all 0.15s; width: 100%;
   margin-top: 4px;
 }
@@ -664,7 +668,7 @@ html, body {
 .graticule { fill: none; stroke: #1c2840; stroke-width: 0.4; stroke-opacity: 0.5; pointer-events: none; }
 .country { fill: #141e30; stroke: #2e4060; stroke-width: 0.5; cursor: pointer; transition: fill 0.15s; }
 body.targeting .country, body.placing .country { cursor: crosshair; }
-.country.non-playable { fill: #101828; stroke: #1e2e48; stroke-width: 0.3; cursor: default; }
+.country.non-playable { fill: #0c0f18; stroke: #141a24; stroke-width: 0.3; cursor: default; }
 .country:hover:not(.non-playable) { fill: #1c2840; }
 .country.selected-player { fill: #0c1a2e; stroke: var(--cyan); stroke-width: 1; }
 .country.allied { stroke: var(--cyan); stroke-width: 0.7; }
@@ -762,7 +766,7 @@ body.placing { cursor: crosshair; }
 }
 
 .extinction-quote {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--mono);
   font-size: 13px;
   color: #4a4a5a;
   margin-bottom: 4px;
@@ -795,7 +799,7 @@ body.placing { cursor: crosshair; }
 /* === Tutorial === */
 .tutorial-overlay {
   position: fixed;
-  top: 50px; left: 50%;
+  top: 50px; left: calc((100% - 300px) / 2);
   transform: translateX(-50%);
   z-index: 200;
   pointer-events: auto;
@@ -804,57 +808,41 @@ body.placing { cursor: crosshair; }
 .tutorial-box {
   background: #08080e;
   border: 1px solid var(--accent);
-  padding: 12px 20px;
-  max-width: 400px;
+  padding: 6px 12px;
+  max-width: 320px;
+  display: flex; align-items: center; gap: 10px;
 }
 
 .tutorial-step {
-  font-family: var(--font);
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text-bright);
-  line-height: 1.6;
-  margin-bottom: 8px;
+  line-height: 1.4;
+  flex: 1;
 }
 
 .tutorial-step kbd {
-  font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   background: var(--panel-border);
   color: var(--text-bright);
-  padding: 1px 5px;
+  padding: 0 4px;
 }
 
-.tutorial-step b {
-  color: var(--amber);
-}
+.tutorial-step b { color: var(--amber); }
 
 .tutorial-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: flex; flex-direction: column;
+  align-items: flex-end; gap: 2px;
+  flex-shrink: 0;
 }
 
-.tutorial-progress {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-dim);
-}
+.tutorial-progress { font-size: 9px; color: var(--text-dim); }
 
 .tutorial-skip {
-  background: none;
-  border: 1px solid var(--panel-border);
-  color: var(--text-dim);
-  font-family: var(--mono);
-  font-size: 9px;
-  padding: 2px 8px;
-  cursor: pointer;
-  letter-spacing: 1px;
+  background: none; border: none;
+  color: var(--text-dim); font-size: 9px;
+  cursor: pointer; padding: 0;
 }
-
-.tutorial-skip:hover {
-  border-color: var(--text-dim);
-  color: var(--text);
-}
+.tutorial-skip:hover { color: var(--text); }
 
 /* === Cheat Console === */
 .cheat-console {

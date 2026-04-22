@@ -246,10 +246,16 @@ function updateCountryStyles() {
       const state = gameState.countries.get(id);
       if (!state) return null;
       if (gameState.phase !== 'PLAYING') return null;
-      if (gameState.isEliminated(id)) return '#0a0a0a';
+      if (gameState.isEliminated(id)) return '#060608';
+
+      // Fog of war — unrevealed nations are very dark
+      const revealed = id === playerId
+        || gameState.isAllied(playerId, id)
+        || isIntelRevealed(id, 'batteries'); // any intel = country is "seen"
+      if (!revealed) return '#141a26'; // fogged playable — slightly brighter than non-playable
 
       const pct = state.population / state.startingPopulation;
-      const damageDarken = 1 - (1 - pct) * 0.5; // darken as damaged
+      const damageDarken = 1 - (1 - pct) * 0.5;
 
       if (id === playerId) {
         return `rgb(${Math.round(0 * damageDarken)}, ${Math.round(34 * damageDarken)}, ${Math.round(51 * damageDarken)})`;
@@ -264,8 +270,15 @@ function updateCountryStyles() {
         return `rgb(${Math.round(40 * damageDarken)}, ${Math.round(8 * damageDarken)}, ${Math.round(8 * damageDarken)})`;
       }
 
-      // Neutral — dim green
       return `rgb(${Math.round(10 * damageDarken)}, ${Math.round(18 * damageDarken)}, ${Math.round(10 * damageDarken)})`;
+    })
+    .style('stroke', d => {
+      const id = String(d.id);
+      if (gameState.phase !== 'PLAYING') return null;
+      if (id === playerId || gameState.isAllied(playerId, id)) return null; // keep default
+      const revealed = isIntelRevealed(id, 'batteries');
+      if (!revealed) return '#1e2436'; // dim but visible border for fogged
+      return null; // use CSS default
     });
 }
 
@@ -552,9 +565,14 @@ export function renderBatteries() {
 
   markers.exit().remove();
 
+  const playerId = gameState.playerCountryId;
   const enter = markers.enter()
     .append('g')
-    .attr('class', d => `battery-marker ${d.role}`);
+    .attr('class', d => {
+      if (d.countryId === playerId) return 'battery-marker player';
+      if (gameState.isAllied(playerId, d.countryId)) return 'battery-marker player'; // allies show as friendly
+      return 'battery-marker ai';
+    });
 
   // Shield shape (inverted triangle)
   enter.append('path')
@@ -562,6 +580,12 @@ export function renderBatteries() {
     .attr('class', 'battery-icon');
 
   const all = enter.merge(markers);
+  // Update class on every render (ownership can change via conquest/invasion)
+  all.attr('class', d => {
+    if (d.countryId === playerId) return 'battery-marker player';
+    if (gameState.isAllied(playerId, d.countryId)) return 'battery-marker player';
+    return 'battery-marker ai';
+  });
   all.attr('transform', d => {
     if (!isVisible(d.position)) return 'translate(-9999, -9999)';
     const [x, y] = projectPoint(d.position);

@@ -4,8 +4,10 @@ import { RESOURCE_COLORS } from '../state/Resources.js';
 import { COUNTRIES } from '../state/countryData.js';
 import { isRevealed } from '../state/Intel.js';
 import { getEffectiveCost, getPlayerMissileType } from '../ai/AIManager.js';
-import { MISSILE_TYPES } from '../constants.js';
-import { getSatelliteAngle } from '../state/Intel.js';
+import { MISSILE_TYPES, LAUNCH_SITE_COST } from '../constants.js';
+import { getBuildCostMultiplier } from '../engine/ResearchSystem.js';
+import { getMode } from '../ui/LaunchUI.js';
+import { getSatelliteAngle, getAllSatellites, getSatLaunches } from '../state/Intel.js';
 import { gameState } from '../state/GameState.js';
 import {
   getProjection,
@@ -80,7 +82,8 @@ export function renderCanvas(dt) {
   // Draw incoming threat lines to player
   drawIncomingThreats();
 
-  // Draw satellite sweep line
+  // Draw satellite launches + sweep
+  drawSatLaunchAnimations();
   drawSatelliteSweep();
 
   // Draw resource nodes
@@ -539,6 +542,8 @@ function drawIntercept(intercept) {
 // === Battery Preview ===
 function drawBatteryPreview() {
   if (!batteryPreviewPos) return;
+  const mode = getMode();
+  if (mode !== 'PLACING_BATTERY' && mode !== 'BUILDING_SILO') return;
   if (!isVisible(batteryPreviewPos)) return;
 
   const pos = projectPoint(batteryPreviewPos);
@@ -572,6 +577,52 @@ function drawBatteryPreview() {
   ctx.closePath();
   ctx.fillStyle = withAlpha(COLORS.PLAYER, 0.6);
   ctx.fill();
+
+  // Cost label
+  const playerId = gameState.playerCountryId;
+  if (playerId) {
+    const mode = getMode();
+    const buildMult = getBuildCostMultiplier(playerId);
+    const player = gameState.getPlayer();
+
+    let label, cost;
+    if (mode === 'PLACING_BATTERY') {
+      cost = Math.ceil(gameState.getBatteryCost(playerId) * buildMult);
+      const rangeKm = Math.round(INTERCEPTOR_RANGE * 6371);
+      label = `INTERCEPTOR ${cost}◆`;
+      const subLabel = `Range: ${rangeKm} km`;
+
+      ctx.font = '10px "JetBrains Mono", monospace';
+      const w = Math.max(ctx.measureText(label).width, ctx.measureText(subLabel).width);
+      const lx = pos[0] + 14;
+      const ly = pos[1] - 4;
+
+      ctx.fillStyle = 'rgba(8, 8, 14, 0.85)';
+      ctx.fillRect(lx - 4, ly - 10, w + 8, 28);
+
+      ctx.fillStyle = player && player.tokens >= cost ? 'rgba(56, 189, 248, 0.9)' : 'rgba(220, 38, 38, 0.9)';
+      ctx.fillText(label, lx, ly);
+
+      ctx.fillStyle = 'rgba(184, 188, 200, 0.5)';
+      ctx.fillText(subLabel, lx, ly + 12);
+
+    } else if (mode === 'BUILDING_SILO') {
+      const siloCount = player ? player.launchSites.length : 0;
+      cost = Math.ceil((15 + siloCount * 3) * buildMult);
+      label = `LAUNCH SILO ${cost}◆`;
+
+      ctx.font = '10px "JetBrains Mono", monospace';
+      const w = ctx.measureText(label).width;
+      const lx = pos[0] + 14;
+      const ly = pos[1] - 4;
+
+      ctx.fillStyle = 'rgba(8, 8, 14, 0.85)';
+      ctx.fillRect(lx - 4, ly - 10, w + 8, 14);
+
+      ctx.fillStyle = player && player.tokens >= cost ? 'rgba(74, 222, 128, 0.9)' : 'rgba(220, 38, 38, 0.9)';
+      ctx.fillText(label, lx, ly);
+    }
+  }
 }
 
 // === Invasion Animation ===
@@ -739,114 +790,129 @@ function drawIncomingThreats() {
   }
 }
 
+// Fog of war is handled via SVG country styling in Globe.js — no canvas fog needed
+
 // === Satellite Sweep ===
+function drawSatLaunchAnimations() {
+  if (gameState.phase !== 'PLAYING') return;
+
+  const launches = getSatLaunches();
+  for (const launch of launches) {
+    const age = gameState.elapsed - launch.startTime;
+    const totalDuration = launch.launchDuration + launch.transferDuration;
+    if (age > totalDuration) continue;
+
+    const p = age / totalDuration; // 0→1 overall progress
+
+    // Interpolate geo position from launch site to orbital insertion point
+    const ip = launch.insertionPoint;
+    const lon = launch.from[0] + (ip.lon - launch.from[0]) * p;
+    const lat = launch.from[1] + (ip.lat - launch.from[1]) * p;
+
+    if (!isVisible([lon, lat])) continue;
+    const pos = projectPoint([lon, lat]);
+    if (!pos) continue;
+
+    // Fading trail from launch site
+    const fromPos = isVisible(launch.from) ? projectPoint(launch.from) : null;
+    if (fromPos) {
+      ctx.beginPath();
+      ctx.moveTo(fromPos[0], fromPos[1]);
+      ctx.lineTo(pos[0], pos[1]);
+      ctx.strokeStyle = withAlpha('#22d3ee', (1 - p) * 0.2);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Dot — white early, cyan later
+    const dotColor = p < 0.3 ? '#ffffff' : '#22d3ee';
+    ctx.beginPath();
+    ctx.arc(pos[0], pos[1], 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = withAlpha(dotColor, 0.8);
+    ctx.fill();
+
+    // Label
+    if (p < 0.8) {
+      const label = p < 0.4 ? `LAUNCH ${launch.preset.name}` : 'ORBITAL INSERTION';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillStyle = withAlpha('#22d3ee', (1 - p) * 0.6);
+      ctx.textAlign = 'center';
+      ctx.fillText(label, pos[0], pos[1] - 10);
+      ctx.textAlign = 'start';
+    }
+  }
+}
+
+// Store satellite screen positions for hover detection
+let satScreenPositions = [];
+
 function drawSatelliteSweep() {
   if (gameState.phase !== 'PLAYING') return;
 
-  const angle = getSatelliteAngle();
-  const sweepLon = angle - 180;
+  const sats = getAllSatellites();
+  satScreenPositions = [];
 
-  if (getProjectionType() === 'mercator') {
-    // Realistic satellite ground track on Mercator
-    // Orbit: ~90 min period, 65° inclination, Earth rotates underneath
-    const inclination = 65;
-    const orbitalPeriod = 60; // game seconds for one full orbit
-    const orbitPhase = (angle / 360) * Math.PI * 2; // current orbital position
+  for (const sat of sats) {
+    const satLon = sat.lon;
+    const satLat = sat.lat;
+    const trail = sat.trail || [];
 
-    // Current satellite position
-    const satLat = inclination * Math.sin(orbitPhase);
-    const satLon = sweepLon;
-    const satPos = projectPoint([satLon, satLat]);
+    // Draw fading trail — where the satellite has actually been
+    if (trail.length > 1) {
+      let lastPos = null;
+      for (let i = 0; i < trail.length; i++) {
+        const pt = trail[i];
+        if (!isVisible([pt.lon, pt.lat])) { lastPos = null; continue; }
+        const pos = projectPoint([pt.lon, pt.lat]);
+        if (!pos) { lastPos = null; continue; }
 
-    // Ground track — same formula as satellite position, extended over time
-    // The satellite moves at a constant rate through angle (sweepLon)
-    // and bobs north/south via sin(orbitPhase)
-    // So the ground track is just this formula evaluated at past/future times
-    const numPoints = 300;
-    const trackDuration = 360; // degrees of longitude to show (full wrap)
-
-    ctx.beginPath();
-    let started = false;
-    let lastPos = null;
-    for (let i = 0; i <= numPoints; i++) {
-      const offset = ((i / numPoints) - 0.5) * trackDuration; // -180 to +180
-      const trackLon = satLon + offset;
-      const trackOrbitPhase = orbitPhase + (offset / 360) * Math.PI * 2;
-      const trackLat = inclination * Math.sin(trackOrbitPhase);
-
-      const pos = projectPoint([trackLon, trackLat]);
-      if (!pos) { started = false; lastPos = null; continue; }
-      if (lastPos && Math.abs(pos[0] - lastPos[0]) > 200) {
-        started = false;
+        if (lastPos) {
+          // Break line if wrapping around map edge
+          if (Math.abs(pos[0] - lastPos[0]) < 200) {
+            const alpha = (i / trail.length) * 0.12; // older = fainter
+            ctx.beginPath();
+            ctx.moveTo(lastPos[0], lastPos[1]);
+            ctx.lineTo(pos[0], pos[1]);
+            ctx.strokeStyle = withAlpha('#22d3ee', alpha);
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+        lastPos = pos;
       }
-      if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
-      else ctx.lineTo(pos[0], pos[1]);
-      lastPos = pos;
     }
-    ctx.strokeStyle = 'rgba(34, 211, 238, 0.04)';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
 
     // Satellite dot
-    if (satPos) {
-      ctx.beginPath();
-      ctx.arc(satPos[0], satPos[1], 3, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(34, 211, 238, 0.6)';
-      ctx.fill();
+    if (!isVisible([satLon, satLat])) continue;
+    const satPos = projectPoint([satLon, satLat]);
+    if (!satPos) continue;
 
-      // Scan footprint circle
-      const footprintRadius = 30;
-      ctx.beginPath();
-      ctx.arc(satPos[0], satPos[1], footprintRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.15)';
-      ctx.setLineDash([3, 5]);
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.setLineDash([]);
+    satScreenPositions.push({ x: satPos[0], y: satPos[1], name: sat.name, desc: sat.desc, incl: sat.inclination });
 
-      // Footprint fill
-      const grad = ctx.createRadialGradient(satPos[0], satPos[1], 0, satPos[0], satPos[1], footprintRadius);
-      grad.addColorStop(0, 'rgba(34, 211, 238, 0.04)');
-      grad.addColorStop(1, 'transparent');
-      ctx.beginPath();
-      ctx.arc(satPos[0], satPos[1], footprintRadius, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
-    }
-  } else {
-    // Orthographic: sample arc on globe
-    const numPoints = 30;
     ctx.beginPath();
-    let started = false;
-    for (let i = 0; i <= numPoints; i++) {
-      const lat = -85 + (170 * i / numPoints);
-      const lonLat = [sweepLon, lat];
-      if (!isVisible(lonLat)) continue;
-      const pos = projectPoint(lonLat);
-      if (!pos) continue;
-      if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
-      else ctx.lineTo(pos[0], pos[1]);
-    }
+    ctx.arc(satPos[0], satPos[1], 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(34, 211, 238, 0.8)';
+    ctx.fill();
+
+    // Scan footprint
+    ctx.beginPath();
+    ctx.arc(satPos[0], satPos[1], 18, 0, Math.PI * 2);
+    ctx.setLineDash([2, 4]);
     ctx.strokeStyle = 'rgba(34, 211, 238, 0.12)';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 0.7;
     ctx.stroke();
-
-    // Glow
-    ctx.beginPath();
-    started = false;
-    for (let i = 0; i <= numPoints; i++) {
-      const lat = -85 + (170 * i / numPoints);
-      const lonLat = [sweepLon, lat];
-      if (!isVisible(lonLat)) continue;
-      const pos = projectPoint(lonLat);
-      if (!pos) continue;
-      if (!started) { ctx.moveTo(pos[0], pos[1]); started = true; }
-      else ctx.lineTo(pos[0], pos[1]);
-    }
-    ctx.strokeStyle = 'rgba(34, 211, 238, 0.04)';
-    ctx.lineWidth = 20;
-    ctx.stroke();
+    ctx.setLineDash([]);
   }
+}
+
+// Check if mouse is near a satellite — called from outside
+export function getSatelliteAtScreen(screenX, screenY) {
+  for (const sat of satScreenPositions) {
+    const dx = screenX - sat.x;
+    const dy = screenY - sat.y;
+    if (dx * dx + dy * dy < 400) return sat; // 20px radius
+  }
+  return null;
 }
 
 // === Resource Nodes ===
@@ -901,7 +967,15 @@ function drawCityLights() {
     ? [...gameState.countries.values()].filter(c => !gameState.isEliminated(c.id))
     : COUNTRIES;
 
+  const playerId = gameState.playerCountryId;
+
   for (const country of countries) {
+    // Fog of war — hide city lights for unrevealed nations
+    if (gameState.phase === 'PLAYING' && country.id && country.id !== playerId
+        && !gameState.isAllied(playerId, country.id)
+        && !isRevealed(country.id, 'batteries')) {
+      continue;
+    }
     for (const city of (country.cities || [])) {
       if (!isVisible(city.coords)) continue;
       const screenPos = projectPoint(city.coords);

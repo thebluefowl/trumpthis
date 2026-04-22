@@ -14,7 +14,7 @@ import { updateDiplomacy } from '../state/Diplomacy.js';
 import { updateEscalation } from './Escalation.js';
 import { updateResources } from './ResourceSystem.js';
 import { updateResearch } from './ResearchSystem.js';
-import { updateSatellite, cleanupIntel } from '../state/Intel.js';
+import { updateSatellite, cleanupIntel, updateFog, updateSatLaunches } from '../state/Intel.js';
 import { updateConquest, openClaimWindow } from './Conquest.js';
 import { events } from '../state/events.js';
 import { ECONOMIC_VICTORY_TOKENS, DIPLOMATIC_VICTORY_PERCENT } from '../constants.js';
@@ -46,6 +46,8 @@ function tick(currentTime) {
     updateResources(dt);
     updateResearch(dt);
     updateSatellite(dt);
+    updateSatLaunches();
+    updateFog();
     cleanupIntel();
     updateDiplomacy(dt);
     updateEscalation(dt);

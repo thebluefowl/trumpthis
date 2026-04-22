@@ -383,6 +383,16 @@ export const BLOCS = {
     description: 'Unaligned nations — free agents, unpredictable, asymmetric strategies',
     members: ['376', '586', '682', '036', '032', '484', '410', '804', '158', '752'],
   },
+  allies_ww2: {
+    id: 'allies_ww2', name: 'Allied Powers (WW2)', color: '#4488dd',
+    description: 'The grand alliance reborn — USA, UK, France, Russia. Uneasy partners against a common enemy.',
+    members: ['840', '826', '250', '643', '124', '036', '616'],
+  },
+  axis_ww2: {
+    id: 'axis_ww2', name: 'Axis Powers (WW2)', color: '#cc4444',
+    description: 'Germany, Japan, Italy + regional allies. Outnumbered but technologically fearsome.',
+    members: ['276', '392', '380', '156', '792', '364', '764'],
+  },
   solo: {
     id: 'solo', name: 'Go Solo', color: '#ff8800',
     description: 'No starting allies — you against the world. Maximum difficulty.',

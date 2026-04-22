@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DEADHAND</title>
+  <title>NULLSTRIKE ZERO</title>
   <link rel="icon" type="image/svg+xml" href="/logo.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -23,60 +23,30 @@
     <!-- 1. Briefing Panel (start screen) -->
     <div id="panel-briefing" class="left-panel">
       <div class="classification-bar">TOP SECRET // NOFORN // SI-G</div>
-      <div class="panel-body">
-        <div class="briefing-logo">
-          <img src="/logo.svg" alt="DEADHAND" class="briefing-logo-img">
-        </div>
+      <div class="panel-body briefing-body">
 
-        <div class="briefing-title">DEADHAND</div>
-        <div class="briefing-subtitle">GLOBAL NUCLEAR WARFARE SIMULATION</div>
+        <div class="briefing-title">NULLSTRIKE<br>ZERO</div>
 
         <div class="briefing-rule"></div>
 
-        <div class="briefing-section">
-          <div class="briefing-label">SITUATION</div>
-          <div class="briefing-text">
-            Global tensions have escalated beyond diplomatic resolution. 35 sovereign nations
-            stand at the threshold of total war. Alliance structures are fracturing. Nuclear
-            arsenals are armed and targeting solutions are locked.
-          </div>
-        </div>
-
-        <div class="briefing-section">
-          <div class="briefing-label">MISSION</div>
-          <div class="briefing-text">
-            Assume strategic command of a nation-state. Build alliances. Deploy defensive
-            systems. Research advanced weapons platforms. Prosecute targets with precision
-            strikes. Survive.
-          </div>
-        </div>
-
-        <div class="briefing-section">
-          <div class="briefing-label">ASSETS AVAILABLE</div>
-          <div class="briefing-grid">
-            <div class="briefing-stat"><span class="briefing-stat-val">35</span><span class="briefing-stat-label">NATIONS</span></div>
-            <div class="briefing-stat"><span class="briefing-stat-val">11</span><span class="briefing-stat-label">WEAPONS</span></div>
-            <div class="briefing-stat"><span class="briefing-stat-val">4</span><span class="briefing-stat-label">BLOCS</span></div>
-            <div class="briefing-stat"><span class="briefing-stat-val">12</span><span class="briefing-stat-label">TECH</span></div>
-          </div>
-        </div>
-
-        <div class="briefing-section">
-          <div class="briefing-label">RULES OF ENGAGEMENT</div>
-          <div class="briefing-text briefing-roe">
-            All weapons systems authorized. Nuclear release requires escalation threshold.
-            Alliance commitments are non-binding. There are no rules in nuclear war —
-            only consequences.
-          </div>
+        <div class="briefing-doc">
+          <div class="briefing-doc-header">OPERATIONS BRIEFING — EYES ONLY</div>
+          <p>Global tensions have reached critical threshold. Diplomatic channels have failed. 35 sovereign nations are armed and on alert.</p>
+          <p>You will assume strategic command of one nation. Your orders:</p>
+          <p>1. Secure alliances or stand alone<br>
+             2. Build missile silos and interceptor batteries<br>
+             3. Research advanced weapons and defense systems<br>
+             4. Strike enemy targets — cities, launch sites, infrastructure<br>
+             5. Survive</p>
+          <p>Victory conditions: eliminate all enemies, achieve economic supremacy (500◆), or unite 60% of surviving nations under your flag.</p>
+          <p class="briefing-warning">Nuclear weapons are authorized. Use at your discretion. There will be consequences.</p>
         </div>
 
         <div class="briefing-rule"></div>
 
         <button class="btn-primary" id="btn-start" style="width: 100%;">ACCEPT BRIEFING</button>
 
-        <div class="briefing-footer">
-          <span>DEADHAND v0.1.0</span>
-        </div>
+        <div class="briefing-version">v0.1.0</div>
       </div>
     </div>
 
@@ -125,22 +95,23 @@
           <button class="tb-btn tb-btn-attack" id="btn-attack"><kbd>A</kbd> STRIKE</button>
           <button class="tb-btn tb-btn-defend" id="btn-deploy"><kbd>D</kbd> DEFEND</button>
           <button class="tb-btn tb-btn-build" id="btn-build"><kbd>B</kbd> SILO</button>
+          <button class="tb-btn tb-btn-intel" id="btn-satellite"><kbd>S</kbd> SAT 30◆</button>
           <button class="tb-btn" id="btn-map"><kbd>M</kbd> MAP</button>
         </div>
       </div>
 
       <!-- Missile Strip -->
       <div class="missile-strip" id="missile-selector">
-        <button class="ms" data-type="drone"><b>0</b>DRN<em>3</em></button>
-        <button class="ms" data-type="tactical"><b>1</b>TAC<em>6</em></button>
-        <button class="ms" data-type="cruise"><b>2</b>CRU<em>12</em></button>
-        <button class="ms" data-type="decoy"><b>9</b>DCY<em>8</em></button>
-        <button class="ms active" data-type="icbm"><b>3</b>ICBM<em>20</em></button>
-        <button class="ms" data-type="dirty_bomb"><b>8</b>DTY<em>10</em></button>
-        <button class="ms" data-type="emp"><b>5</b>EMP<em>16</em></button>
-        <button class="ms" data-type="mirv"><b>4</b>MIRV<em>40</em></button>
-        <button class="ms" data-type="slbm"><b>7</b>SLB<em>25</em></button>
-        <button class="ms" data-type="hypersonic"><b>6</b>HYP<em>35</em></button>
+        <button class="ms" data-type="drone"><b>1</b>DRN<em>3</em></button>
+        <button class="ms active" data-type="tactical"><b>2</b>TAC<em>6</em></button>
+        <button class="ms" data-type="cruise"><b>3</b>CRU<em>12</em></button>
+        <button class="ms" data-type="decoy"><b>4</b>DCY<em>8</em></button>
+        <button class="ms" data-type="icbm"><b>5</b>ICBM<em>20</em></button>
+        <button class="ms" data-type="dirty_bomb"><b>6</b>DTY<em>10</em></button>
+        <button class="ms" data-type="emp"><b>7</b>EMP<em>16</em></button>
+        <button class="ms" data-type="mirv"><b>8</b>MIRV<em>40</em></button>
+        <button class="ms" data-type="slbm"><b>9</b>SLB<em>25</em></button>
+        <button class="ms" data-type="hypersonic"><b>0</b>HYP<em>35</em></button>
         <button class="ms ms-nuke" data-type="nuke"><b>N</b>NUKE<em>75</em></button>
       </div>
 
@@ -149,7 +120,6 @@
 
       <!-- Bottom bar -->
       <div class="bottom-bar">
-        <div class="status-msg" id="status-msg"></div>
         <div id="news-ticker" class="news-ticker">
           <div class="ticker-label">LIVE</div>
           <div class="ticker-scroll" id="ticker-scroll"></div>

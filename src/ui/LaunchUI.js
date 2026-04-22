@@ -139,7 +139,7 @@ export function initLaunchUI() {
         const origin = findNearestSite(inverted);
         if (origin) setTargetingPreview(origin, inverted);
       }
-    } else if (mode === 'PLACING_BATTERY') {
+    } else if (mode === 'PLACING_BATTERY' || mode === 'BUILDING_SILO') {
       const projection = getProjection();
       const inverted = projection.invert(toGlobeCoords(e.clientX, e.clientY));
       if (inverted && isVisible(inverted)) {

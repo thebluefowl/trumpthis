@@ -13,7 +13,7 @@ export function showAlliancePicker(selectedCountryId) {
 
   const playerBloc = COUNTRY_BLOC.get(selectedCountryId) || 'independent';
 
-  let html = '<div class="picker-title">CHOOSE ALLIANCE</div>';
+  let html = '<div class="setup-header"><button class="setup-back" id="btn-back-country">BACK</button><div class="setup-title" style="flex:1;text-align:right;">CHOOSE ALLIANCE</div></div>';
   html += '<div class="picker-subtitle">Select a bloc to join or go solo</div>';
   html += '<div class="bloc-list">';
 
@@ -56,6 +56,12 @@ export function showAlliancePicker(selectedCountryId) {
     card.addEventListener('mouseleave', () => {
       highlightBloc(playerBloc);
     });
+  });
+
+  // Back button — go back to country select
+  document.getElementById('btn-back-country')?.addEventListener('click', () => {
+    clearHighlight();
+    events.emit('nav:back-to-country');
   });
 }
 

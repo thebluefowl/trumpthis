@@ -100,22 +100,14 @@ export function renderNationsTab(el) {
     `;
   }).join('');
 
-  // Bind click to expand/collapse
-  el.querySelectorAll('.nation-row').forEach(row => {
-    row.addEventListener('click', (e) => {
-      if (e.target.closest('.sb-btn')) return; // don't toggle when clicking action buttons
-      const id = row.dataset.nation;
-      expandedId = expandedId === id ? null : id;
-      renderNationsTab(el);
-    });
-  });
-
-  // Bind action buttons
-  el.querySelectorAll('.sb-btn[data-action]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  // Event delegation — survives re-renders
+  el.onclick = (e) => {
+    // Action buttons
+    const actionBtn = e.target.closest('.sb-btn[data-action]');
+    if (actionBtn) {
       e.stopPropagation();
-      const action = btn.dataset.action;
-      const targetId = btn.dataset.id;
+      const action = actionBtn.dataset.action;
+      const targetId = actionBtn.dataset.id;
       if (action === 'propose') proposeAlliance(playerId, targetId);
       else if (action === 'accept') acceptAlliance(playerId, targetId);
       else if (action === 'break') breakAllianceBetween(playerId, targetId);
@@ -128,6 +120,15 @@ export function renderNationsTab(el) {
         }
       }
       renderNationsTab(el);
-    });
-  });
+      return;
+    }
+
+    // Expand/collapse nation rows
+    const row = e.target.closest('.nation-row');
+    if (row) {
+      const id = row.dataset.nation;
+      expandedId = expandedId === id ? null : id;
+      renderNationsTab(el);
+    }
+  };
 }

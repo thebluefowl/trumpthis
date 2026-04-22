@@ -18,12 +18,13 @@ import { resetEscalation } from './engine/Escalation.js';
 import { resetConquest } from './engine/Conquest.js';
 import { initResources, resetResources } from './engine/ResourceSystem.js';
 import { resetResearch } from './engine/ResearchSystem.js';
-import { resetIntel } from './state/Intel.js';
+import { resetIntel, initFog } from './state/Intel.js';
 import { initSoundEngine } from './audio/SoundEngine.js';
 import { initCheats } from './ui/Cheats.js';
 import { initTutorial, startTutorial, resetTutorial } from './ui/Tutorial.js';
 import { startAutoSave, stopAutoSave, hasSave, deleteSave } from './engine/SaveLoad.js';
 import { startMusic, stopMusic, setMusicPhase } from './audio/Music.js';
+import { getSatelliteAtScreen } from './rendering/CanvasOverlay.js';
 
 // Panel visibility helpers
 function showPanel(id) { document.getElementById(id)?.classList.remove('hidden'); }
@@ -48,6 +49,29 @@ async function init() {
   initSoundEngine();
   initCheats();
   initTutorial();
+
+  // Satellite hover tooltip
+  const overlay = document.getElementById('overlay');
+  const tip = document.getElementById('tooltip');
+  if (overlay && tip) {
+    overlay.style.pointerEvents = 'none'; // canvas doesn't capture — use document
+    document.addEventListener('mousemove', (e) => {
+      if (gameState.phase !== 'PLAYING') return;
+      const rect = document.getElementById('globe')?.getBoundingClientRect();
+      if (!rect) return;
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const sat = getSatelliteAtScreen(sx, sy);
+      if (sat) {
+        tip.innerHTML = `<div class="name">${sat.name}</div><div class="stat">${sat.desc}</div><div class="stat">Inclination: <span>${sat.incl}°</span></div>`;
+        tip.classList.add('visible');
+        tip.style.left = (e.clientX + 12) + 'px';
+        tip.style.top = (e.clientY + 12) + 'px';
+      } else if (tip.classList.contains('visible') && gameState.phase === 'PLAYING') {
+        tip.classList.remove('visible');
+      }
+    });
+  }
 
   // Ensure globe is sized correctly
   window.dispatchEvent(new Event('resize'));
@@ -86,6 +110,24 @@ async function init() {
     showAlliancePicker(gameState.playerCountryId);
   });
 
+  // Back navigation
+  events.on('nav:back-to-briefing', () => {
+    hidePanel('panel-setup');
+    showPanel('panel-briefing');
+    setPanelOffsets(360, 0);
+    setInteractable(false);
+    startAutoRotate();
+    if (getProjectionType() === 'mercator') switchProjection();
+    setMusicPhase('menu');
+  });
+
+  events.on('nav:back-to-country', () => {
+    // Unlock country selection, go back to country list
+    resetCountrySelect();
+    gameState.playerCountryId = null;
+    showCountrySelect();
+  });
+
   // Alliance selected → Start game
   events.on('bloc:selected', (blocId) => {
     startGame(blocId);
@@ -118,6 +160,7 @@ function startGame(blocId) {
   initResources();
   resetResearch();
   resetIntel();
+  initFog();
   resetCombatLog();
   showNewsTicker();
   startTutorial();

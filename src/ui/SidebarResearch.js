@@ -68,12 +68,12 @@ export function renderResearchTab(el) {
 
   el.innerHTML = html;
 
-  // Bind research buttons
-  el.querySelectorAll('[data-tech]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      startResearch(playerId, btn.dataset.tech);
-      renderResearchTab(el);
-    });
-  });
+  // Event delegation — survives re-renders
+  el.onclick = (e) => {
+    const btn = e.target.closest('[data-tech]');
+    if (!btn) return;
+    e.stopPropagation();
+    startResearch(playerId, btn.dataset.tech);
+    renderResearchTab(el);
+  };
 }

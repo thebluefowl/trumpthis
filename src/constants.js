@@ -49,7 +49,7 @@ export const MISSILE_TYPES = {
     cost: 3,
     baseFlight: 7,         // slow loiter
     distFactor: 4,
-    damage: 0.02,
+    damage: 0.06,
     autoIntercept: 0.80,   // easy to shoot down
     manualIntercept: 0.95,
     blastRadius: 8,
@@ -65,7 +65,7 @@ export const MISSILE_TYPES = {
     cost: 6,
     baseFlight: 2.5,
     distFactor: 2,
-    damage: 0.05,
+    damage: 0.12,
     autoIntercept: 0.70,
     manualIntercept: 0.90,
     blastRadius: 18,
@@ -80,7 +80,7 @@ export const MISSILE_TYPES = {
     cost: 12,
     baseFlight: 5,
     distFactor: 3,
-    damage: 0.08,
+    damage: 0.18,
     autoIntercept: 0.45,    // flies low — hard to catch
     manualIntercept: 0.70,
     blastRadius: 28,
@@ -126,7 +126,7 @@ export const MISSILE_TYPES = {
     cost: 10,
     baseFlight: 5,
     distFactor: 3,
-    damage: 0.03,
+    damage: 0.08,
     autoIntercept: 0.60,
     manualIntercept: 0.85,
     blastRadius: 22,
@@ -160,7 +160,7 @@ export const MISSILE_TYPES = {
     cost: 40,
     baseFlight: 7,
     distFactor: 5,
-    damage: 0.08,            // ×4 warheads = 32% if all land
+    damage: 0.15,            // ×4 warheads = 32% if all land
     warheads: 4,
     splitAt: 0.7,
     autoIntercept: 0.30,
@@ -177,7 +177,7 @@ export const MISSILE_TYPES = {
     cost: 25,
     baseFlight: 5,
     distFactor: 2,
-    damage: 0.10,
+    damage: 0.22,
     autoIntercept: 0.50,
     manualIntercept: 0.75,
     blastRadius: 35,
@@ -193,7 +193,7 @@ export const MISSILE_TYPES = {
     cost: 35,
     baseFlight: 1.5,
     distFactor: 1,
-    damage: 0.10,
+    damage: 0.22,
     autoIntercept: 0.15,     // nearly impossible to stop
     manualIntercept: 0.35,
     blastRadius: 30,
@@ -208,7 +208,7 @@ export const MISSILE_TYPES = {
     cost: 75,
     baseFlight: 8,
     distFactor: 4,
-    damage: 0.50,            // half a city in one hit
+    damage: 0.75,            // half a city in one hit
     autoIntercept: 0.45,
     manualIntercept: 0.70,
     blastRadius: 80,
@@ -222,7 +222,7 @@ export const MISSILE_TYPES = {
   },
 };
 
-export const DEFAULT_MISSILE_TYPE = 'icbm';
+export const DEFAULT_MISSILE_TYPE = 'tactical';
 
 // === Victory Conditions ===
 export const ECONOMIC_VICTORY_TOKENS = 500;     // accumulate this many tokens at once
@@ -263,6 +263,8 @@ export const REL_NEUTRAL_START = -5;       // default starting relationship (sli
 export const AI_SURRENDER_THRESHOLD = 0.15;// AI surrenders at 15% population
 export const INVASION_THRESHOLD = 0.25;    // can invade below 25% population
 export const INVASION_BASE_COST = 40;      // base token cost to invade
+export const SATELLITE_LAUNCH_COST = 30;   // tokens to launch an additional satellite
+export const MAX_SATELLITES = 5;           // maximum satellites in orbit
 
 // === Interceptors ===
 export const INTERCEPTOR_COST = 12; // tokens to place a battery — real investment
