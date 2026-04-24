@@ -156,9 +156,13 @@ export function initHUD() {
     if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
     const typeMap = { '1': 'drone', '2': 'tactical', '3': 'cruise', '4': 'decoy', '5': 'icbm', '6': 'dirty_bomb', '7': 'emp', '8': 'mirv', '9': 'slbm', '0': 'hypersonic', 'n': 'nuke' };
     if (typeMap[e.key]) {
-      const mtype = MISSILE_TYPES[typeMap[e.key]];
-      if (mtype && mtype.unlockAt !== undefined && gameState.elapsed < mtype.unlockAt) return;
-      setPlayerMissileType(typeMap[e.key]);
+      const typeKey = typeMap[e.key];
+      const mtype = MISSILE_TYPES[typeKey];
+      // Block if locked AND nothing loaded; allow if any loaded
+      const p = gameState.getPlayer();
+      const anyLoaded = p && p.launchSites.some(s => (s.loadedMissiles?.[typeKey] || 0) > 0);
+      if (mtype && mtype.unlockAt !== undefined && gameState.elapsed < mtype.unlockAt && !anyLoaded) return;
+      setPlayerMissileType(typeKey);
       updateMissileSelector();
     }
   });
@@ -309,21 +313,31 @@ function renderClaimAlerts() {
 function updateMissileSelector() {
   const current = getPlayerMissileType();
   const elapsed = gameState.elapsed || 0;
-  const playerTokens = gameState.getPlayer()?.tokens || 0;
+  const player = gameState.getPlayer();
+  // Loaded count across all player silos
+  const loaded = {};
+  if (player) {
+    for (const silo of player.launchSites) {
+      for (const t in (silo.loadedMissiles || {})) {
+        loaded[t] = (loaded[t] || 0) + silo.loadedMissiles[t];
+      }
+    }
+  }
   document.querySelectorAll('.ms').forEach(btn => {
     const typeKey = btn.dataset.type;
     const mtype = MISSILE_TYPES[typeKey];
-    const locked = mtype && mtype.unlockAt !== undefined && elapsed < mtype.unlockAt;
-    const cantAfford = mtype && !locked && playerTokens < mtype.cost;
+    const loadedCount = loaded[typeKey] || 0;
+    const locked = mtype && mtype.unlockAt !== undefined && elapsed < mtype.unlockAt && loadedCount === 0;
+    const notLoaded = mtype && !locked && loadedCount === 0;
     btn.classList.toggle('active', typeKey === current);
     btn.classList.toggle('locked', locked);
-    btn.classList.toggle('unaffordable', cantAfford);
+    btn.classList.toggle('unaffordable', notLoaded); // reuse existing "dim" style for "none loaded"
     btn.disabled = locked;
     if (locked) {
       const remaining = Math.ceil(mtype.unlockAt - elapsed);
       btn.title = `Unlocks in ${remaining}s`;
     } else if (mtype) {
-      btn.title = `${mtype.name} — ${mtype.cost}◆. ${mtype.description}`;
+      btn.title = `${mtype.name} — ${loadedCount} loaded. ${mtype.description}`;
     }
   });
 }

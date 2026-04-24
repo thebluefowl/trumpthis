@@ -8,8 +8,20 @@ import { SATELLITE_LAUNCH_COST, MAX_SATELLITES } from '../constants.js';
 const revealed = new Map();
 const REVEAL_DURATION = 90; // seconds
 
+// Countries whose cities have ever been spotted — cities stay visible permanently
+const citiesSeenCountries = new Set();
+
 export function reveal(countryId, type) {
   revealed.set(`${countryId}:${type}`, gameState.elapsed + REVEAL_DURATION);
+  citiesSeenCountries.add(countryId);
+}
+
+export function hasCitiesBeenRevealed(countryId) {
+  const playerId = gameState.playerCountryId;
+  if (countryId === playerId) return true;
+  if (gameState.isAllied(playerId, countryId)) return true;
+  if (hasTotalAwareness(playerId)) return true;
+  return citiesSeenCountries.has(countryId);
 }
 
 export function revealAll(countryId) {
@@ -280,6 +292,7 @@ export function updateFog() {
 
 export function resetIntel() {
   revealed.clear();
+  citiesSeenCountries.clear();
   satellites = [{ orbitAngle: 0, ascendingNode: 0, ...ORBIT_PRESETS[0] }];
   satLaunches.length = 0;
   fogGrid.fill(0);

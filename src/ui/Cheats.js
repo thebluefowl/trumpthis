@@ -35,7 +35,61 @@ const CHEATS = {
       if (!p) return;
       p.tokens = 999;
       p.tokenCap = 999;
+      p.fissile = 999;
+      p.rareEarth = 999;
       log('You now have the GDP of a small galaxy. Use wisely. (You won\'t.)', 'success');
+    },
+  },
+  'armory': {
+    desc: 'armory <type> [count] — add missiles directly to player stockpile',
+    fn: (args) => {
+      const p = gameState.getPlayer();
+      if (!p) return;
+      const type = args[0];
+      const count = parseInt(args[1]) || 10;
+      if (!type || !PRODUCTION[type]) {
+        log(`Unknown type. Options: ${Object.keys(PRODUCTION).join(', ')}`, 'error');
+        return;
+      }
+      p.stockpile[type] = (p.stockpile[type] || 0) + count;
+      log(`Added ${count}× ${type} to stockpile. Auto-load will distribute to silos.`, 'success');
+    },
+  },
+  'fullstock': {
+    desc: 'Fill every player silo to max capacity with tactical missiles',
+    fn: () => {
+      const p = gameState.getPlayer();
+      if (!p) return;
+      let total = 0;
+      for (const silo of p.launchSites) {
+        silo.loadedMissiles = silo.loadedMissiles || {};
+        const existing = Object.values(silo.loadedMissiles).reduce((s, n) => s + n, 0);
+        const room = 4 - existing;
+        if (room > 0) {
+          silo.loadedMissiles.tactical = (silo.loadedMissiles.tactical || 0) + room;
+          total += room;
+        }
+      }
+      log(`Loaded ${total}× tactical across ${p.launchSites.length} silos.`, 'success');
+    },
+  },
+  'armageddon': {
+    desc: 'Fill every silo with nukes. Pray.',
+    fn: () => {
+      const p = gameState.getPlayer();
+      if (!p) return;
+      MISSILE_TYPES.nuke.unlockAt = 0;
+      let total = 0;
+      for (const silo of p.launchSites) {
+        silo.loadedMissiles = silo.loadedMissiles || {};
+        const existing = Object.values(silo.loadedMissiles).reduce((s, n) => s + n, 0);
+        const room = 4 - existing;
+        if (room > 0) {
+          silo.loadedMissiles.nuke = (silo.loadedMissiles.nuke || 0) + room;
+          total += room;
+        }
+      }
+      log(`${total} nukes loaded. "I have become Death, destroyer of silos."`, 'error');
     },
   },
   'opensesame': {

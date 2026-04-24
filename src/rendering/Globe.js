@@ -276,6 +276,9 @@ function updateCountryStyles() {
       const id = String(d.id);
       if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return null;
       if (id === playerId || gameState.isAllied(playerId, id)) return null; // keep default
+      // Hostile nations always show red border — threats stay visible through fog
+      const rel = gameState.getRelationship(playerId, id);
+      if (rel <= -50) return null; // CSS .country.hostile paints red
       const revealed = isIntelRevealed(id, 'batteries');
       if (!revealed) return '#1e2436'; // dim but visible border for fogged
       return null; // use CSS default

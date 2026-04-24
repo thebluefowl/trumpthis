@@ -98,12 +98,17 @@ export function updateMissiles(dt) {
         applyEMP(missile);
       } else {
         // Normal explosion
+        // blastScale ties visual radius to damage radius (see DamageModel REF_BLAST=40)
+        const blastScale = Math.max(0.5, (missile.mtype?.blastRadius || 40) / 40);
         gameState.explosions.push({
           id: crypto.randomUUID(),
           position: missile.target,
           startTime: gameState.elapsed,
           duration: missile.mtype?.isNuke ? EXPLOSION_DURATION * 2 : EXPLOSION_DURATION,
-          maxRadius: missile.mtype?.blastRadius || 25,
+          maxRadius: missile.mtype?.blastRadius || 25, // fallback only
+          blastScale,
+          splashRadians: 0.08 * blastScale, // mirror DamageModel CITY_SPLASH_RADIUS
+          directRadians: 0.03 * blastScale, // mirror DamageModel CITY_DAMAGE_RADIUS
           countryId: missile.toCountryId,
           attackerId: missile.fromCountryId,
           missileType: missile.type,

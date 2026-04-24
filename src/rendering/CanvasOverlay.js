@@ -2,7 +2,7 @@ import { COLORS, EXPLOSION_DURATION, TRAIL_FADE_TIME, INTERCEPT_TRAIL_DURATION, 
 import { getAllNodes } from '../engine/ResourceSystem.js';
 import { RESOURCE_COLORS } from '../state/Resources.js';
 import { COUNTRIES } from '../state/countryData.js';
-import { isRevealed } from '../state/Intel.js';
+import { isRevealed, hasCitiesBeenRevealed } from '../state/Intel.js';
 import { getEffectiveCost, getPlayerMissileType } from '../ai/AIManager.js';
 import { MISSILE_TYPES, LAUNCH_SITE_COST } from '../constants.js';
 import { getBuildCostMultiplier } from '../engine/ResearchSystem.js';
@@ -267,9 +267,14 @@ function drawExplosion(explosion) {
 
   const progress = age / duration;
 
+  // Tie visual radius to actual damage splash radius
+  const splashR = explosion.splashRadians
+    ? explosion.splashRadians * getGlobeRadius()
+    : explosion.maxRadius;
+
   if (explosion.isNuke) {
     // === NUCLEAR EXPLOSION — massive, multi-phase ===
-    const maxR = explosion.maxRadius * 1.8;
+    const maxR = splashR * 1.2;
 
     // Phase 1: blinding white flash (0-10%)
     if (progress < 0.1) {
@@ -341,7 +346,7 @@ function drawExplosion(explosion) {
   }
 
   // === Standard explosion ===
-  const currentRadius = explosion.maxRadius * easeOutQuad(Math.min(progress * 2, 1));
+  const currentRadius = splashR * easeOutQuad(Math.min(progress * 2, 1));
   const alpha = 1 - easeInQuad(progress);
 
   const explosionColor = explosion.isEMP ? '#8844ff' : COLORS.EXPLOSION;
@@ -970,10 +975,9 @@ function drawCityLights() {
   const playerId = gameState.playerCountryId;
 
   for (const country of countries) {
-    // Fog of war — hide city lights for unrevealed nations
+    // Fog of war — hide city lights for nations whose cities have never been seen
     if (gameState.phase === 'PLAYING' && country.id && country.id !== playerId
-        && !gameState.isAllied(playerId, country.id)
-        && !isRevealed(country.id, 'batteries')) {
+        && !hasCitiesBeenRevealed(country.id)) {
       continue;
     }
     for (const city of (country.cities || [])) {

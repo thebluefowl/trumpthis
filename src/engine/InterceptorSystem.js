@@ -66,6 +66,7 @@ export function updateInterceptors(dt) {
   // === Fire new interceptors — terminal phase, only when missile is in range ===
   for (const battery of gameState.interceptors) {
     if (battery.cooldownUntil > gameState.elapsed) continue;
+    if (gameState.isEliminated(battery.countryId)) continue; // dead nations don't fight
 
     const targetMissile = findMissileInRange(battery);
     if (!targetMissile) continue;
