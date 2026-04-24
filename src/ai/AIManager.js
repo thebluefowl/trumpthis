@@ -2,8 +2,9 @@ import {
   MISSILE_TYPES, DEFAULT_MISSILE_TYPE, LAUNCH_SITE_COOLDOWN,
   AI_LAUNCH_COOLDOWN, AI_COOLDOWN_VARIANCE, AI_WARMUP,
   AI_BATTERY_INTERVAL, INTERCEPTOR_COST, REL_HOSTILE_THRESHOLD, REL_ALLIED_THRESHOLD,
-  AI_SURRENDER_THRESHOLD,
+  AI_SURRENDER_THRESHOLD, PRODUCTION,
 } from '../constants.js';
+import { enqueueMissile } from '../engine/ProductionSystem.js';
 import { gameState } from '../state/GameState.js';
 import { createInterpolator, geoDistance } from '../rendering/Projection.js';
 import { placeBattery } from '../engine/InterceptorSystem.js';
@@ -32,6 +33,8 @@ function getAIState(countryId) {
       timeSinceDiplomacy: 0,
       researchCooldown: 15000 + Math.random() * 20000,
       timeSinceResearch: 0,
+      productionCooldown: 2000 + Math.random() * 2000,
+      timeSinceProduction: 0,
     });
   }
   return aiState.get(countryId);
@@ -70,16 +73,29 @@ function updateNationAI(country, dt) {
     return;
   }
 
-  // === Attack logic ===
+  // === Production logic (build missiles continuously) ===
   const personality = getPersonality(country.id);
+  state.timeSinceProduction += dt * 1000;
+  if (state.timeSinceProduction >= state.productionCooldown) {
+    tryQueueProduction(country);
+    state.timeSinceProduction = 0;
+    state.productionCooldown = 2000 + Math.random() * 2500;
+  }
+
+  // === Attack logic ===
   state.timeSinceAttack += dt * 1000;
-  if (gameState.elapsed >= AI_WARMUP && state.timeSinceAttack >= state.attackCooldown && country.tokens >= 3) {
+  if (gameState.elapsed >= AI_WARMUP && state.timeSinceAttack >= state.attackCooldown) {
     const target = pickTarget(country);
     if (target) {
-      launchAtTarget(country, target);
+      const fired = launchAtTarget(country, target);
       state.timeSinceAttack = 0;
-      const variance = 1 - AI_COOLDOWN_VARIANCE / 2 + Math.random() * AI_COOLDOWN_VARIANCE;
-      state.attackCooldown = AI_LAUNCH_COOLDOWN * variance / personality.attackBias;
+      if (fired) {
+        const variance = 1 - AI_COOLDOWN_VARIANCE / 2 + Math.random() * AI_COOLDOWN_VARIANCE;
+        state.attackCooldown = AI_LAUNCH_COOLDOWN * variance / personality.attackBias;
+      } else {
+        // Nothing loaded or target unreachable — recheck in 2s
+        state.attackCooldown = 2000;
+      }
     }
   }
 
@@ -188,13 +204,17 @@ function pickTarget(country) {
   return bestTarget;
 }
 
-function pickMissileType(country, target) {
+function pickMissileType(country, target, loadedTypes) {
   const elapsed = gameState.elapsed;
   const personality = getPersonality(country.id);
 
-  // Filter to affordable + unlocked types
+  // Filter to types currently loaded + unlocked
   const available = Object.entries(MISSILE_TYPES)
-    .filter(([, t]) => t.cost <= country.tokens && (t.unlockAt === undefined || elapsed >= t.unlockAt))
+    .filter(([typeId, t]) => {
+      if (loadedTypes && !loadedTypes.has(typeId)) return false;
+      if (t.unlockAt !== undefined && elapsed < t.unlockAt) return false;
+      return true;
+    })
     .map(([typeId, t]) => ({ typeId, ...t }));
   if (available.length === 0) return null;
 
@@ -229,8 +249,7 @@ function pickMissileType(country, target) {
     else if (id === 'hypersonic') w = 3;
 
     if (id === 'nuke') {
-      if (country.tokens > 120 && targetPopRatio > 0.4) w = 4 * personality.nukeBias;
-      else w = 0;
+      w = (targetPopRatio > 0.4 ? 4 : 1) * personality.nukeBias;
     }
 
     // Personality preferred weapons get a boost
@@ -257,38 +276,90 @@ function launchAtTarget(fromCountry, toCountry) {
     }
   }
   const activeSites = fromCountry.launchSites.filter(s => !s.disabled);
-  if (activeSites.length === 0) {
-    console.log(`[AI] ${fromCountry.name} has no active launch sites`);
-    return;
-  }
+  if (activeSites.length === 0) return false;
 
-  const typeKey = pickMissileType(fromCountry, toCountry);
-  if (!typeKey) { console.log(`[AI] ${fromCountry.name} pickMissileType returned null`); return; }
+  // Collect types loaded across active silos
+  const loadedTypes = new Set();
+  for (const site of activeSites) {
+    for (const t in (site.loadedMissiles || {})) {
+      if (site.loadedMissiles[t] > 0) loadedTypes.add(t);
+    }
+  }
+  if (loadedTypes.size === 0) return false;
+
+  const typeKey = pickMissileType(fromCountry, toCountry, loadedTypes);
+  if (!typeKey) return false;
   const mtype = MISSILE_TYPES[typeKey];
-  if (!mtype) { console.log(`[AI] ${fromCountry.name} invalid mtype for ${typeKey}`); return; }
+  if (!mtype) return false;
 
-  const launchSite = activeSites[Math.floor(Math.random() * activeSites.length)];
+  // Find a silo that has this type loaded
+  const launchSite = activeSites.find(s => (s.loadedMissiles && s.loadedMissiles[typeKey] > 0));
+  if (!launchSite) return false;
 
-  // Strategic target selection — accuracy degrades with distance
   const target = pickStrategicTarget(toCountry, typeKey, fromCountry);
-  if (!target) {
-    console.log(`[AI] ${fromCountry.name} no valid target point for ${typeKey} against ${toCountry.name}. Cities:`, toCountry.cities?.length, 'centroid:', toCountry.centroid);
-    return;
-  }
-
-  const cost = getEffectiveCost(fromCountry.id, typeKey, launchSite.coords, target);
-  if (fromCountry.tokens < cost) {
-    console.log(`[AI] ${fromCountry.name} can't afford ${typeKey}: need ${cost}, have ${fromCountry.tokens.toFixed(0)}`);
-    return;
-  }
+  if (!target) return false;
 
   createMissile(fromCountry.id, toCountry.id, launchSite.coords, target, typeKey, false);
-  fromCountry.tokens -= cost;
+  launchSite.loadedMissiles[typeKey] -= 1;
+  if (launchSite.loadedMissiles[typeKey] <= 0) delete launchSite.loadedMissiles[typeKey];
   fromCountry.combatStats.missilesLaunched++;
 
   if (fromCountry.id === gameState.playerCountryId) {
     gameState.stats.playerLaunched++;
   }
+  return true;
+}
+
+// === AI Production ===
+// Called periodically per AI nation. Picks a missile type to queue based on
+// what's unlocked, what resources are available, and personality preferences.
+// Keeps the queue short so newly-unlocked techs enter rotation quickly.
+function tryQueueProduction(country) {
+  const MAX_QUEUE = 6;
+  if ((country.productionQueue?.length || 0) >= MAX_QUEUE) return;
+
+  const personality = getPersonality(country.id);
+  const elapsed = gameState.elapsed;
+
+  // Filter to unlocked types with available resources
+  const candidates = Object.entries(PRODUCTION)
+    .filter(([typeId]) => {
+      const mtype = MISSILE_TYPES[typeId];
+      if (!mtype) return false;
+      if (mtype.unlockAt !== undefined && elapsed < mtype.unlockAt) return false;
+      const cfg = PRODUCTION[typeId];
+      if ((cfg.fissile || 0) > (country.fissile || 0)) return false;
+      if ((cfg.rareEarth || 0) > (country.rareEarth || 0)) return false;
+      return true;
+    })
+    .map(([typeId]) => typeId);
+
+  if (candidates.length === 0) return;
+
+  // Weight by personality + tier; cheap types produced more often to maintain baseline
+  const weights = {};
+  for (const id of candidates) {
+    let w = 1;
+    if (id === 'drone' || id === 'tactical') w = 5;
+    else if (id === 'cruise' || id === 'decoy') w = 4;
+    else if (id === 'icbm' || id === 'slbm') w = 3;
+    else if (id === 'dirty_bomb' || id === 'emp') w = 2;
+    else if (id === 'mirv' || id === 'hypersonic') w = 2;
+    else if (id === 'nuke') w = 1 * personality.nukeBias;
+
+    if (personality.preferredWeapons.includes(id)) w *= 1.8;
+    weights[id] = w;
+  }
+
+  const total = candidates.reduce((s, id) => s + (weights[id] || 1), 0);
+  let r = Math.random() * total;
+  let pick = candidates[0];
+  for (const id of candidates) {
+    r -= weights[id] || 1;
+    if (r <= 0) { pick = id; break; }
+  }
+
+  enqueueMissile(country.id, pick, 1);
 }
 
 function pickStrategicTarget(targetCountry, typeKey, fromCountry) {
