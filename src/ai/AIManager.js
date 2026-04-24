@@ -590,8 +590,12 @@ export function playerLaunchMissile(origin, target, targetCountryId) {
   const player = gameState.getPlayer();
   if (!player) return false;
 
-  const effectiveCost = getEffectiveCost(player.id, playerMissileType, origin, target);
-  if (player.tokens < effectiveCost) return false;
+  // Find the silo at `origin` and verify it has this missile type loaded
+  const silo = player.launchSites.find(s =>
+    s.coords[0] === origin[0] && s.coords[1] === origin[1]
+  );
+  if (!silo) return false;
+  if (!silo.loadedMissiles || !silo.loadedMissiles[playerMissileType]) return false;
 
   if (!targetCountryId) {
     let bestDist = Infinity;
@@ -609,7 +613,8 @@ export function playerLaunchMissile(origin, target, targetCountryId) {
   }
 
   createMissile(player.id, targetCountryId, origin, target, playerMissileType, true);
-  player.tokens -= effectiveCost;
+  silo.loadedMissiles[playerMissileType] -= 1;
+  if (silo.loadedMissiles[playerMissileType] <= 0) delete silo.loadedMissiles[playerMissileType];
   player.combatStats.missilesLaunched++;
   gameState.stats.playerLaunched++;
   return true;

@@ -52,7 +52,7 @@ export function processImpacts() {
     // Update nation's total population from cities
     country.population = country.cities.reduce((sum, c) => sum + c.population, 0);
 
-    // === 2. Launch site damage (disable) ===
+    // === 2. Launch site damage (disable + lose loaded missiles) ===
     for (const site of country.launchSites) {
       const dist = geoDistance(impactPos, site.coords);
       if (dist < INFRA_DISABLE_RADIUS) {
@@ -60,6 +60,7 @@ export function processImpacts() {
         const disableDuration = (dist < CITY_DAMAGE_RADIUS ? 120 : 60) * recoveryMult;
         site.disabled = true;
         site.disabledUntil = Math.max(site.disabledUntil, gameState.elapsed + disableDuration);
+        site.loadedMissiles = {};
       }
     }
 

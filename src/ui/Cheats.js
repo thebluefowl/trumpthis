@@ -4,6 +4,8 @@ import { showToast } from './Toast.js';
 import { renderPaths } from '../rendering/Globe.js';
 import { revealAll } from '../state/Intel.js';
 import { createMissile } from '../ai/AIManager.js';
+import { enqueueMissile } from '../engine/ProductionSystem.js';
+import { PRODUCTION } from '../constants.js';
 
 let consoleEl = null;
 let inputEl = null;
@@ -73,7 +75,7 @@ const CHEATS = {
       for (let i = 0; i < 3; i++) {
         p.launchSites.push({
           coords: [p.centroid[0] + (Math.random() - 0.5) * 6, p.centroid[1] + (Math.random() - 0.5) * 6],
-          disabled: false, disabledUntil: 0,
+          disabled: false, disabledUntil: 0, loadedMissiles: {},
         });
       }
       renderPaths();
@@ -193,6 +195,57 @@ const CHEATS = {
       const secs = parseInt(args[0]) || 60;
       gameState.elapsed += secs;
       log(`Time warped ${secs}s. The space-time continuum filed a complaint.`, 'success');
+    },
+  },
+  'factory': {
+    desc: 'Inspect production state: queue, stockpile, fissile, rare earth',
+    fn: () => {
+      const p = gameState.getPlayer();
+      if (!p) return;
+      log(`Factories: ${p.factoryCount} │ Fissile: ${p.fissile.toFixed(1)} │ Rare Earth: ${p.rareEarth.toFixed(1)}`, 'info');
+      const stock = Object.entries(p.stockpile).filter(([, n]) => n > 0).map(([t, n]) => `${t}:${n}`).join(' ') || '(empty)';
+      log(`Stockpile: ${stock}`, 'info');
+      if (p.productionQueue.length === 0) {
+        log('Queue: (empty)', 'info');
+      } else {
+        p.productionQueue.forEach((it, i) => {
+          const cfg = PRODUCTION[it.type];
+          const eta = cfg ? Math.max(0, cfg.buildTime - it.progress).toFixed(1) : '?';
+          const inSlot = i < p.factoryCount;
+          const slot = inSlot ? '▶' : ' ';
+          let tag = '';
+          if (inSlot && !it.started) tag = ' (stalled — resources)';
+          else if (!inSlot) tag = ' (waiting)';
+          log(`${slot} [${i}] ${it.type} — ${eta}s${tag}`, 'info');
+        });
+      }
+    },
+  },
+  'silos': {
+    desc: 'Show player silos and their loaded missiles',
+    fn: () => {
+      const p = gameState.getPlayer();
+      if (!p) return;
+      p.launchSites.forEach((s, i) => {
+        const loads = Object.entries(s.loadedMissiles || {}).filter(([, n]) => n > 0).map(([t, n]) => `${t}:${n}`).join(' ') || '(empty)';
+        const state = s.disabled ? `DISABLED until ${Math.ceil(s.disabledUntil - gameState.elapsed)}s` : 'active';
+        log(`[${i}] (${s.coords[0].toFixed(1)},${s.coords[1].toFixed(1)}) ${state} — ${loads}`, 'info');
+      });
+    },
+  },
+  'queue': {
+    desc: 'queue <type> [count] — add missiles to player production queue',
+    fn: (args) => {
+      const p = gameState.getPlayer();
+      if (!p) return;
+      const type = args[0];
+      const count = parseInt(args[1]) || 1;
+      if (!type || !PRODUCTION[type]) {
+        log(`Unknown missile type. Options: ${Object.keys(PRODUCTION).join(', ')}`, 'error');
+        return;
+      }
+      enqueueMissile(p.id, type, count);
+      log(`Queued ${count}× ${type}`, 'success');
     },
   },
   'trumpmademedoit': {

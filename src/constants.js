@@ -280,6 +280,31 @@ export const MAX_BATTERIES = {
   3: 3, // Regional power
 };
 
+// === Production ===
+// Per-missile-type build config. Time in seconds at base factory speed.
+// fissile/rareEarth consumed when a build *starts* at a factory (head of queue).
+export const PRODUCTION = {
+  drone:      { buildTime: 3,  fissile: 0, rareEarth: 0 },
+  tactical:   { buildTime: 5,  fissile: 0, rareEarth: 0 },
+  cruise:     { buildTime: 8,  fissile: 0, rareEarth: 0 },
+  decoy:      { buildTime: 4,  fissile: 0, rareEarth: 0 },
+  icbm:       { buildTime: 15, fissile: 1, rareEarth: 0 },
+  dirty_bomb: { buildTime: 10, fissile: 1, rareEarth: 0 },
+  emp:        { buildTime: 12, fissile: 0, rareEarth: 1 },
+  mirv:       { buildTime: 30, fissile: 3, rareEarth: 0 },
+  slbm:       { buildTime: 18, fissile: 1, rareEarth: 0 },
+  hypersonic: { buildTime: 20, fissile: 1, rareEarth: 1 },
+  nuke:       { buildTime: 40, fissile: 4, rareEarth: 0 },
+};
+
+export const STARTING_FACTORIES = 2;
+export const STARTING_STOCKPILE = { tactical: 5 };
+export const SILO_CAPACITY = 4; // max loaded missiles per silo
+
+// Per-node per-second yield for strategic stockpile resources
+export const FISSILE_PER_URANIUM_NODE = 0.25;
+export const RAREEARTH_PER_NODE = 0.25;
+
 // === AI ===
 export const AI_WARMUP = 0; // no grace period — war starts immediately
 export const AI_LAUNCH_COOLDOWN = 20000; // ms — AI fires every ~20s

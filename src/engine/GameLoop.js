@@ -13,6 +13,7 @@ import { updateAIManager } from '../ai/AIManager.js';
 import { updateDiplomacy } from '../state/Diplomacy.js';
 import { updateEscalation } from './Escalation.js';
 import { updateResources } from './ResourceSystem.js';
+import { updateProduction } from './ProductionSystem.js';
 import { updateResearch } from './ResearchSystem.js';
 import { updateSatellite, cleanupIntel, updateFog, updateSatLaunches } from '../state/Intel.js';
 import { updateConquest, openClaimWindow } from './Conquest.js';
@@ -44,6 +45,7 @@ function tick(currentTime) {
 
     updateTokens(dt);
     updateResources(dt);
+    updateProduction(dt);
     updateResearch(dt);
     updateSatellite(dt);
     updateSatLaunches();

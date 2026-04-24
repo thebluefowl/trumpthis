@@ -80,17 +80,13 @@ export function initLaunchUI() {
     const target = geoCoords;
     if (!target) return false;
 
-    const origin = findNearestSite(target);
+    const type = getPlayerMissileType();
+    const origin = findNearestSiteWithType(target, type);
     if (!origin) {
-      showToast('No active launch sites available', 'error');
-      return false;
-    }
-
-    const player = gameState.getPlayer();
-    const cost = getEffectiveCost(player.id, getPlayerMissileType(), origin, target);
-    if (!player || player.tokens < cost) {
-      showToast(`Not enough tokens — need ${cost}◆ (have ${Math.floor(player.tokens)}◆)`, 'warn');
-      flashElement('tb-tokens', 'flash-red');
+      const player = gameState.getPlayer();
+      const anyActive = player && player.launchSites.some(s => !s.disabled && gameState.elapsed >= (s.disabledUntil || 0));
+      if (!anyActive) showToast('No active launch sites available', 'error');
+      else showToast(`No ${type} loaded. Queue production first.`, 'warn');
       return true;
     }
 
@@ -136,7 +132,7 @@ export function initLaunchUI() {
       const [gx, gy] = toGlobeCoords(e.clientX, e.clientY);
       const inverted = projection.invert([gx, gy]);
       if (inverted && isFinite(inverted[0]) && isFinite(inverted[1])) {
-        const origin = findNearestSite(inverted);
+        const origin = findNearestSiteWithType(inverted, getPlayerMissileType()) || findNearestSite(inverted);
         if (origin) setTargetingPreview(origin, inverted);
       }
     } else if (mode === 'PLACING_BATTERY' || mode === 'BUILDING_SILO') {
@@ -209,6 +205,7 @@ export function initLaunchUI() {
         coords: clickPos,
         disabled: false,
         disabledUntil: 0,
+        loadedMissiles: {},
       });
       showToast('Launch silo constructed', 'success');
       renderPaths();
@@ -290,6 +287,30 @@ function findNearestSite(target) {
   let best = activeSites[0].coords;
   let bestDist = Infinity;
   for (const site of activeSites) {
+    const dx = target[0] - site.coords[0];
+    const dy = target[1] - site.coords[1];
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = site.coords;
+    }
+  }
+  return best;
+}
+
+function findNearestSiteWithType(target, type) {
+  const player = gameState.getPlayer();
+  if (!player) return null;
+  const candidates = player.launchSites.filter(s =>
+    !s.disabled &&
+    gameState.elapsed >= (s.disabledUntil || 0) &&
+    s.loadedMissiles && (s.loadedMissiles[type] || 0) > 0
+  );
+  if (candidates.length === 0) return null;
+
+  let best = candidates[0].coords;
+  let bestDist = Infinity;
+  for (const site of candidates) {
     const dx = target[0] - site.coords[0];
     const dy = target[1] - site.coords[1];
     const dist = dx * dx + dy * dy;

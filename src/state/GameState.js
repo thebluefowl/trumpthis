@@ -1,4 +1,4 @@
-import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES, INVASION_THRESHOLD, INVASION_BASE_COST } from '../constants.js';
+import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES, INVASION_THRESHOLD, INVASION_BASE_COST, STARTING_FACTORIES, STARTING_STOCKPILE } from '../constants.js';
 import { COUNTRIES, COUNTRY_MAP } from './countryData.js';
 
 function relKey(a, b) {
@@ -55,10 +55,16 @@ class GameState {
         startingPopulation: def.population,
         tokens: STARTING_TOKENS,
         tokenCap: TOKEN_CAPS[tier],
+        fissile: 0,
+        rareEarth: 0,
+        factoryCount: STARTING_FACTORIES,
+        productionQueue: [],
+        stockpile: { ...STARTING_STOCKPILE },
         launchSites: def.launchSites.map(coords => ({
           coords,
           disabled: false,
           disabledUntil: 0,
+          loadedMissiles: {},
         })),
         cities: (def.cities || []).map(city => ({
           name: city.name,
