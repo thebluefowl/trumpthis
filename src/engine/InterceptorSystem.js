@@ -13,8 +13,10 @@ import { getInterceptBonus, getInterceptorCooldownMultiplier, getInterceptorRang
 // Terminal phase intercept: fires when missile enters range, resolves in ~0.8s
 const INTERCEPT_RESOLVE_TIME = 0.8; // seconds — very fast, like a real terminal intercept
 
-// Track which missiles have already been engaged (one attempt per battery pass)
-const engagedMissiles = new Set();
+// Per-missile active interceptor count. Multiple batteries can stack shots on a
+// high-threat target; each additional shot has diminishing marginal value (via
+// scoring penalty) so cheap threats don't soak the defense grid.
+const engagedMissiles = new Map(); // missileId → active interceptor count
 
 export function updateInterceptors(dt) {
   if (gameState.phase !== 'PLAYING') return;
@@ -58,24 +60,40 @@ export function updateInterceptors(dt) {
         });
       }
 
-      // If missed, release the missile so another battery can try
-      engagedMissiles.delete(intc.targetMissileId);
+      // Decrement engagement count (or clear if last)
+      const remaining = (engagedMissiles.get(intc.targetMissileId) || 1) - 1;
+      if (remaining <= 0) engagedMissiles.delete(intc.targetMissileId);
+      else engagedMissiles.set(intc.targetMissileId, remaining);
     }
   }
 
-  // === Fire new interceptors — terminal phase, only when missile is in range ===
+  // === Fire new interceptors — pick highest-threat target in range ===
   for (const battery of gameState.interceptors) {
     if (battery.cooldownUntil > gameState.elapsed) continue;
-    if (gameState.isEliminated(battery.countryId)) continue; // dead nations don't fight
+    if (gameState.isEliminated(battery.countryId)) continue;
 
-    const targetMissile = findMissileInRange(battery);
+    const targetMissile = pickBestTarget(battery, engagedMissiles);
     if (!targetMissile) continue;
-    if (engagedMissiles.has(targetMissile.id)) continue;
 
     const autoRate = targetMissile.mtype?.autoIntercept ?? INTERCEPT_AUTO_SUCCESS;
     const bonus = getInterceptBonus(battery.countryId);
     fireInterceptor(battery, targetMissile, Math.min(0.95, autoRate + bonus));
   }
+}
+
+// Threat score for prioritization — higher = engage first
+function threatScore(missile, batteryBloc) {
+  const mtype = missile.mtype || {};
+  let score = (mtype.damage || 0.05) * 100;
+  if (mtype.isNuke) score *= 8;              // nukes are existential
+  if (mtype.warheads) score *= mtype.warheads; // MIRVs hit multiple times
+  if (mtype.contamination) score *= 1.3;      // lingering zones are bad
+  if (mtype.blastRadius) score += mtype.blastRadius * 0.1;
+  // Hitting our own bloc? Huge multiplier.
+  if (gameState.getBlocId(missile.toCountryId) === batteryBloc) score *= 3;
+  // Urgency — if already >70% of flight, give a kicker so it's engaged now, not later
+  const urgency = Math.max(0, missile.progress - 0.5) * 40;
+  return score + urgency;
 }
 
 export function manualIntercept(missile) {
@@ -92,7 +110,7 @@ export function manualIntercept(missile) {
 }
 
 function fireInterceptor(battery, missile, successRate) {
-  engagedMissiles.add(missile.id);
+  engagedMissiles.set(missile.id, (engagedMissiles.get(missile.id) || 0) + 1);
 
   // Tech: Point Defense Systems — faster recharge
   const cdMult = getInterceptorCooldownMultiplier(battery.countryId);
@@ -122,39 +140,40 @@ function fireInterceptor(battery, missile, successRate) {
   });
 }
 
-function findMissileInRange(battery) {
-  let nearest = null;
-  let nearestDist = Infinity;
-
-  // Tech: AEGIS Defense Network — +20% range
+function pickBestTarget(battery, engagedMissiles) {
   const rangeMult = getInterceptorRangeBonus(battery.countryId);
   const effectiveRange = INTERCEPTOR_RANGE * rangeMult;
+  const batteryBloc = gameState.getBlocId(battery.countryId);
 
-  // Tech: AEGIS — can defend allies
-  const defendsAllies = canDefendAllies(battery.countryId);
+  let best = null;
+  let bestScore = -Infinity;
 
   for (const missile of gameState.missiles) {
-    if (missile.fromCountryId === battery.countryId) continue;
-    if (gameState.isAllied(missile.fromCountryId, battery.countryId)) continue;
-
-    // Only intercept missiles targeting this nation or allies (if AEGIS)
-    const targetingUs = missile.toCountryId === battery.countryId;
-    const targetingAlly = defendsAllies && gameState.isAllied(battery.countryId, missile.toCountryId);
-    if (!targetingUs && !targetingAlly) {
-      // Still intercept if missile is just passing through our range
-      // (any hostile missile in range gets intercepted)
-    }
+    if (gameState.getBlocId(missile.fromCountryId) === batteryBloc) continue;
 
     const missilePos = missile.interpolator(missile.progress);
     const dist = geoDistance(battery.position, missilePos);
+    if (dist >= effectiveRange) continue;
 
-    if (dist < effectiveRange && dist < nearestDist) {
-      nearest = missile;
-      nearestDist = dist;
+    const threat = threatScore(missile, batteryBloc);
+    const stacked = engagedMissiles.get(missile.id) || 0;
+    // Diminishing returns: each additional interceptor on the same missile
+    // divides that target's effective score, so stacking is only worthwhile
+    // for very high-threat targets.
+    const stackDivisor = Math.pow(2.2, stacked);
+    // Hard cap to prevent piling on a single drone forever
+    const maxStack = missile.mtype?.isNuke ? 4
+      : missile.mtype?.warheads ? 3
+      : 2;
+    if (stacked >= maxStack) continue;
+
+    const score = threat / stackDivisor - dist * 50;
+    if (score > bestScore) {
+      bestScore = score;
+      best = missile;
     }
   }
-
-  return nearest;
+  return best;
 }
 
 function findBatteryForMissile(missile, countryId) {
@@ -176,16 +195,18 @@ function findBatteryForMissile(missile, countryId) {
   return best;
 }
 
-export function placeBattery(countryId, position, role) {
+export function placeBattery(countryId, position, role, opts = {}) {
   const country = gameState.countries.get(countryId);
   if (!country) return false;
+  const bloc = gameState.getBloc(countryId);
 
   // Tech: Industrial Base — batteries cost 25% less
   const buildMult = getBuildCostMultiplier(countryId);
   const cost = Math.ceil(gameState.getBatteryCost(countryId) * buildMult);
-  if (country.tokens < cost) return false;
-
-  country.tokens -= cost;
+  if (!opts.skipCost) {
+    if (!bloc || bloc.tokens < cost) return false;
+    bloc.tokens -= cost;
+  }
 
   const battery = {
     id: crypto.randomUUID(),

@@ -22,9 +22,10 @@ export function startResearch(countryId, techId) {
   if (tech.requires && !state.completed.has(tech.requires)) return false; // prereq not met
 
   const country = gameState.countries.get(countryId);
-  if (!country || country.tokens < tech.cost) return false;
+  const bloc = gameState.getBloc(countryId);
+  if (!country || !bloc || bloc.tokens < tech.cost) return false;
 
-  country.tokens -= tech.cost;
+  bloc.tokens -= tech.cost;
   state.current = { techId, startTime: gameState.elapsed, duration: tech.time };
   return true;
 }

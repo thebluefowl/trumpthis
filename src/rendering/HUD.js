@@ -158,9 +158,9 @@ export function initHUD() {
     if (typeMap[e.key]) {
       const typeKey = typeMap[e.key];
       const mtype = MISSILE_TYPES[typeKey];
-      // Block if locked AND nothing loaded; allow if any loaded
-      const p = gameState.getPlayer();
-      const anyLoaded = p && p.launchSites.some(s => (s.loadedMissiles?.[typeKey] || 0) > 0);
+      // Block if locked AND nothing loaded; allow if any loaded across the bloc
+      const blocSilos = gameState.playerBlocId ? gameState.getBlocSilos(gameState.playerBlocId) : [];
+      const anyLoaded = blocSilos.some(e => (e.site.loadedMissiles?.[typeKey] || 0) > 0);
       if (mtype && mtype.unlockAt !== undefined && gameState.elapsed < mtype.unlockAt && !anyLoaded) return;
       setPlayerMissileType(typeKey);
       updateMissileSelector();
@@ -179,10 +179,13 @@ export function renderHUD() {
   const secs = Math.floor(gameState.elapsed % 60);
   setIfChanged('tb-clock', `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
 
-  // Tokens
-  setIfChanged('tb-tokens', Math.floor(player.tokens));
-  setIfChanged('tb-fissile', (player.fissile || 0).toFixed(1));
-  setIfChanged('tb-rare', (player.rareEarth || 0).toFixed(1));
+  // Tokens / Fissile / Rare — now pooled at the bloc level
+  const bloc = gameState.blocs?.get(gameState.playerBlocId);
+  if (bloc) {
+    setIfChanged('tb-tokens', Math.floor(bloc.tokens));
+    setIfChanged('tb-fissile', (bloc.fissile || 0).toFixed(1));
+    setIfChanged('tb-rare', (bloc.rareEarth || 0).toFixed(1));
+  }
 
   // Token rate
   const tokenRate = (TOKEN_RATES[player.tier] * getTokenMultiplier() * Math.log(player.population / player.startingPopulation + 1) / Math.log(2)).toFixed(1);
@@ -318,11 +321,10 @@ function updateMissileSelector() {
   const player = gameState.getPlayer();
   // Loaded count across all player silos
   const loaded = {};
-  if (player) {
-    for (const silo of player.launchSites) {
-      for (const t in (silo.loadedMissiles || {})) {
-        loaded[t] = (loaded[t] || 0) + silo.loadedMissiles[t];
-      }
+  const blocSilos = gameState.playerBlocId ? gameState.getBlocSilos(gameState.playerBlocId) : [];
+  for (const { site } of blocSilos) {
+    for (const t in (site.loadedMissiles || {})) {
+      loaded[t] = (loaded[t] || 0) + site.loadedMissiles[t];
     }
   }
   document.querySelectorAll('.ms').forEach(btn => {

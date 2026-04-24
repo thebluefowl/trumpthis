@@ -1,35 +1,37 @@
 import { TOKEN_RATES, PLAYER_TOKEN_BONUS } from '../constants.js';
 import { gameState } from '../state/GameState.js';
-import { getTokenMultiplier } from './Escalation.js';
+import { getTokenMultiplier, isEscalationActive } from './Escalation.js';
 import { getResourceBonus } from './ResourceSystem.js';
 import { getResourceMultiplier, getWarEconomyBonus, getSuperpowerEconomy } from './ResearchSystem.js';
-import { isEscalationActive } from './Escalation.js';
 
+// Ticks tokens at the bloc level. Rate is the sum of per-member generation so
+// a bigger coalition earns more, but population loss across any member still
+// drags on output. Tokens pool at the bloc, not per country.
 export function updateTokens(dt) {
   const tokenMult = getTokenMultiplier();
   const escalating = isEscalationActive();
+  const playerBlocId = gameState.playerBlocId;
 
-  for (const country of gameState.getActiveCountries()) {
-    const popRatio = country.population / country.startingPopulation;
-    const genFactor = Math.log(popRatio + 1) / Math.log(2);
-    const playerBonus = country.id === gameState.playerCountryId ? PLAYER_TOKEN_BONUS : 1.0;
-    const winterPenalty = Math.max(0.5, 1 - gameState.nuclearWinterLevel * 0.07);
+  for (const [blocId, bloc] of gameState.blocs) {
+    const members = gameState.getBlocCountries(blocId).filter(c => !gameState.isEliminated(c.id));
+    if (members.length === 0) continue;
 
-    // Tech: Wartime Production (+40% during escalation)
-    const warEcon = escalating ? getWarEconomyBonus(country.id) : 1.0;
+    let rate = 0;
+    for (const country of members) {
+      const popRatio = country.population / country.startingPopulation;
+      const genFactor = Math.log(popRatio + 1) / Math.log(2);
+      const winterPenalty = Math.max(0.5, 1 - gameState.nuclearWinterLevel * 0.07);
+      const warEcon = escalating ? getWarEconomyBonus(country.id) : 1.0;
+      const superEcon = getSuperpowerEconomy(country.id);
+      const baseRate = TOKEN_RATES[country.tier] * genFactor * tokenMult * winterPenalty * warEcon * superEcon.genMultiplier;
+      const resMult = getResourceMultiplier(country.id);
+      const resourceBonus = getResourceBonus(country.id) * resMult;
+      rate += baseRate + resourceBonus;
+    }
 
-    // Tech: Superpower Economy (+50% gen, +100 cap)
-    const superEcon = getSuperpowerEconomy(country.id);
+    // Player bonus (only on player's bloc)
+    if (blocId === playerBlocId) rate *= PLAYER_TOKEN_BONUS;
 
-    const baseRate = TOKEN_RATES[country.tier] * genFactor * tokenMult * playerBonus * winterPenalty * warEcon * superEcon.genMultiplier;
-
-    // Tech: Resource Extraction (+25% resource bonuses)
-    const resMult = getResourceMultiplier(country.id);
-    const resourceBonus = getResourceBonus(country.id) * resMult;
-
-    const rate = baseRate + resourceBonus;
-    const cap = country.tokenCap + superEcon.tokenCapBonus;
-
-    country.tokens = Math.min(cap, country.tokens + rate * dt);
+    bloc.tokens = Math.min(bloc.tokenCap, bloc.tokens + rate * dt);
   }
 }

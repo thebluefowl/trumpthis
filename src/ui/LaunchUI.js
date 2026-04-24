@@ -87,8 +87,8 @@ export function initLaunchUI() {
     const type = getPlayerMissileType();
     const origin = findNearestSiteWithType(target, type);
     if (!origin) {
-      const player = gameState.getPlayer();
-      const anyActive = player && player.launchSites.some(s => !s.disabled && gameState.elapsed >= (s.disabledUntil || 0));
+      const blocSilos = gameState.getBlocSilos(gameState.playerBlocId);
+      const anyActive = blocSilos.some(e => !e.site.disabled && gameState.elapsed >= (e.site.disabledUntil || 0));
       if (!anyActive) showToast('No active launch sites available', 'error');
       else showToast(`No ${type} loaded. Queue production first.`, 'warn');
       return true;
@@ -173,16 +173,19 @@ export function initLaunchUI() {
         return;
       }
 
-      const player = gameState.getPlayer();
+      const bloc = gameState.blocs.get(gameState.playerBlocId);
       const batteryCost = gameState.getBatteryCost(gameState.playerCountryId);
-      if (player.tokens < batteryCost) {
+      if (!bloc || bloc.tokens < batteryCost) {
         showToast(`Not enough tokens — need ${batteryCost}◆`, 'warn');
         return;
       }
-
-      // No cap — cost scales progressively
-
-      placeBattery(gameState.playerCountryId, clickPos, 'player');
+      bloc.tokens -= batteryCost;
+      // Attribute to whichever bloc country owns the clicked territory
+      let hostId = gameState.playerCountryId;
+      for (const c of gameState.getBlocCountries(gameState.playerBlocId)) {
+        if (isPointInCountry(clickPos, c.id)) { hostId = c.id; break; }
+      }
+      placeBattery(hostId, clickPos, 'player', { skipCost: true });
       showToast('Interceptor battery deployed', 'success');
       cancelMode();
 
@@ -195,17 +198,22 @@ export function initLaunchUI() {
         return;
       }
 
-      const player = gameState.getPlayer();
-      // No cap — cost scales linearly like batteries
-      const siloCount = player.launchSites.length;
-      const siloCost = Math.ceil((15 + siloCount * 3) * getBuildCostMultiplier(gameState.playerCountryId));
-      if (player.tokens < siloCost) {
+      const bloc = gameState.blocs.get(gameState.playerBlocId);
+      // Cost scales with total bloc silos
+      const totalSilos = gameState.getBlocSilos(gameState.playerBlocId).length;
+      const siloCost = Math.ceil((15 + totalSilos * 3) * getBuildCostMultiplier(gameState.playerCountryId));
+      if (!bloc || bloc.tokens < siloCost) {
         showToast(`Not enough tokens — need ${siloCost}◆`, 'warn');
         return;
       }
-
-      player.tokens -= siloCost;
-      player.launchSites.push({
+      // Attribute the new silo to the bloc country whose territory the click landed on
+      let hostId = gameState.playerCountryId;
+      for (const c of gameState.getBlocCountries(gameState.playerBlocId)) {
+        if (isPointInCountry(clickPos, c.id)) { hostId = c.id; break; }
+      }
+      const host = gameState.countries.get(hostId);
+      bloc.tokens -= siloCost;
+      host.launchSites.push({
         coords: clickPos,
         disabled: false,
         disabledUntil: 0,
@@ -233,8 +241,8 @@ export function initLaunchUI() {
 function enterAttackMode() {
   const player = gameState.getPlayer();
   if (!player) return;
-  const activeSites = player.launchSites.filter(s => !s.disabled);
-  if (activeSites.length === 0) {
+  const blocSilos = gameState.getBlocSilos(gameState.playerBlocId);
+  if (blocSilos.every(e => e.site.disabled)) {
     showToast('All launch sites disabled', 'error');
     return;
   }
@@ -283,45 +291,35 @@ function cancelMode() {
 }
 
 function findNearestSite(target) {
-  const player = gameState.getPlayer();
-  if (!player) return null;
-  const activeSites = player.launchSites.filter(s => !s.disabled && gameState.elapsed >= (s.disabledUntil || 0));
-  if (activeSites.length === 0) return null;
-
-  let best = activeSites[0].coords;
+  const silos = gameState.getBlocSilos(gameState.playerBlocId);
+  const active = silos.filter(e => !e.site.disabled && gameState.elapsed >= (e.site.disabledUntil || 0));
+  if (active.length === 0) return null;
+  let best = active[0].site.coords;
   let bestDist = Infinity;
-  for (const site of activeSites) {
+  for (const { site } of active) {
     const dx = target[0] - site.coords[0];
     const dy = target[1] - site.coords[1];
     const dist = dx * dx + dy * dy;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = site.coords;
-    }
+    if (dist < bestDist) { bestDist = dist; best = site.coords; }
   }
   return best;
 }
 
 function findNearestSiteWithType(target, type) {
-  const player = gameState.getPlayer();
-  if (!player) return null;
-  const candidates = player.launchSites.filter(s =>
-    !s.disabled &&
-    gameState.elapsed >= (s.disabledUntil || 0) &&
-    s.loadedMissiles && (s.loadedMissiles[type] || 0) > 0
+  const silos = gameState.getBlocSilos(gameState.playerBlocId);
+  const candidates = silos.filter(e =>
+    !e.site.disabled &&
+    gameState.elapsed >= (e.site.disabledUntil || 0) &&
+    e.site.loadedMissiles && (e.site.loadedMissiles[type] || 0) > 0
   );
   if (candidates.length === 0) return null;
-
-  let best = candidates[0].coords;
+  let best = candidates[0].site.coords;
   let bestDist = Infinity;
-  for (const site of candidates) {
+  for (const { site } of candidates) {
     const dx = target[0] - site.coords[0];
     const dy = target[1] - site.coords[1];
     const dist = dx * dx + dy * dy;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = site.coords;
-    }
+    if (dist < bestDist) { bestDist = dist; best = site.coords; }
   }
   return best;
 }

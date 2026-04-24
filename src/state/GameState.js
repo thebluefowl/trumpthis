@@ -1,5 +1,5 @@
 import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES, INVASION_THRESHOLD, INVASION_BASE_COST, STARTING_FACTORIES, STARTING_STOCKPILE, SETUP_PHASE_DURATION } from '../constants.js';
-import { COUNTRIES, COUNTRY_MAP } from './countryData.js';
+import { COUNTRIES, COUNTRY_MAP, BLOCS, COUNTRY_BLOC } from './countryData.js';
 
 function relKey(a, b) {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
@@ -18,6 +18,8 @@ class GameState {
 
     // Runtime country state keyed by country id
     this.countries = new Map();
+    // Runtime bloc state keyed by bloc id — pooled economy + production
+    this.blocs = new Map();
 
     // Diplomacy
     this.relationships = new Map(); // "id1:id2" → number (-100 to +100)
@@ -45,6 +47,68 @@ class GameState {
     };
   }
 
+  initBlocs() {
+    this.blocs.clear();
+    for (const [blocId, bloc] of Object.entries(BLOCS)) {
+      // Scale factory count and token cap with bloc size
+      const size = bloc.members.length || 1;
+      this.blocs.set(blocId, {
+        id: blocId,
+        name: bloc.name,
+        color: bloc.color,
+        tokens: STARTING_TOKENS,
+        tokenCap: 150 + size * 30,
+        fissile: 0,
+        rareEarth: 0,
+        factoryCount: Math.max(2, Math.round(size * 0.7)),
+        productionQueue: [],
+        stockpile: { ...STARTING_STOCKPILE },
+      });
+    }
+  }
+
+  getBloc(countryId) {
+    const blocId = COUNTRY_BLOC.get(countryId);
+    return blocId ? this.blocs.get(blocId) : null;
+  }
+
+  getBlocId(countryId) {
+    return COUNTRY_BLOC.get(countryId) || null;
+  }
+
+  getBlocCountries(blocId) {
+    return [...this.countries.values()].filter(c => COUNTRY_BLOC.get(c.id) === blocId);
+  }
+
+  getBlocSilos(blocId) {
+    const silos = [];
+    // Member countries that haven't been captured away
+    for (const c of this.getBlocCountries(blocId)) {
+      if (this.isEliminated(c.id) && c.conqueredBy && this.getBlocId(c.conqueredBy) !== blocId) continue;
+      for (const s of c.launchSites) silos.push({ site: s, countryId: c.id });
+    }
+    // Countries conquered *by* this bloc (silos rehomed)
+    for (const c of this.countries.values()) {
+      if (!this.isEliminated(c.id)) continue;
+      if (!c.conqueredBy) continue;
+      if (this.getBlocId(c.conqueredBy) !== blocId) continue;
+      if (this.getBlocId(c.id) === blocId) continue; // already counted above
+      for (const s of c.launchSites) silos.push({ site: s, countryId: c.id });
+    }
+    return silos;
+  }
+
+  isInPlayerBloc(countryId) {
+    if (!this.playerBlocId) return false;
+    return COUNTRY_BLOC.get(countryId) === this.playerBlocId;
+  }
+
+  isBlocEliminated(blocId) {
+    const members = this.getBlocCountries(blocId);
+    if (members.length === 0) return true;
+    return members.every(c => this.isEliminated(c.id));
+  }
+
   initAllCountries() {
     for (const def of COUNTRIES) {
       const tier = def.tier;
@@ -54,7 +118,7 @@ class GameState {
         tier,
         population: def.population,
         startingPopulation: def.population,
-        tokens: STARTING_TOKENS,
+        tokens: STARTING_TOKENS, // legacy per-country (unused once bloc economy lands)
         tokenCap: TOKEN_CAPS[tier],
         fissile: 0,
         rareEarth: 0,
@@ -88,8 +152,10 @@ class GameState {
 
   startGame(playerCountryId, blocId) {
     this.playerCountryId = playerCountryId;
-    this.playerBlocId = blocId;
+    // If the player's chosen country isn't in the given bloc, use the country's actual bloc
+    this.playerBlocId = COUNTRY_BLOC.get(playerCountryId) || blocId;
     this.initAllCountries();
+    this.initBlocs();
     this.phase = 'SETUP';
     this.elapsed = 0;
     this.setupEndsAt = SETUP_PHASE_DURATION;
@@ -151,7 +217,7 @@ class GameState {
   }
 
   getActiveAI() {
-    return this.getActiveCountries().filter(c => c.role === 'ai');
+    return this.getActiveCountries().filter(c => c.role === 'ai' && !this.isInPlayerBloc(c.id));
   }
 
   // === Batteries ===
@@ -170,12 +236,80 @@ class GameState {
   }
 
   getBatteryCost(countryId) {
-    const count = this.getBatteryCount(countryId);
+    // Cost scales with the whole bloc's battery count (blocs pool defense)
+    const blocId = this.getBlocId(countryId);
+    let count = 0;
+    if (blocId) {
+      for (const b of this.interceptors) {
+        if (this.getBlocId(b.countryId) === blocId) count++;
+      }
+    } else {
+      count = this.getBatteryCount(countryId);
+    }
     // Linear scaling: 8, 10, 12, 14, 16, 18, 20...
     return 8 + count * 2;
   }
 
   // === Invasion ===
+
+  // === Bloc capture — replaces per-country invasion ===
+  canCaptureBloc(attackerBlocId, targetBlocId) {
+    if (attackerBlocId === targetBlocId) return false;
+    if (this.isBlocEliminated(targetBlocId)) return false;
+    const members = this.getBlocCountries(targetBlocId);
+    const alive = members.filter(c => !this.isEliminated(c.id));
+    if (alive.length === 0) return false;
+    const totalPop = alive.reduce((s, c) => s + c.population, 0);
+    const startingPop = members.reduce((s, c) => s + c.startingPopulation, 0);
+    if (startingPop === 0) return false;
+    return (totalPop / startingPop) < INVASION_THRESHOLD;
+  }
+
+  getBlocCaptureCost(attackerBlocId, targetBlocId) {
+    const members = this.getBlocCountries(targetBlocId);
+    const startingPop = members.reduce((s, c) => s + c.startingPopulation, 0);
+    const totalPop = members.filter(c => !this.isEliminated(c.id)).reduce((s, c) => s + c.population, 0);
+    if (startingPop === 0) return Infinity;
+    const ratio = totalPop / startingPop;
+    return Math.ceil(INVASION_BASE_COST * ratio * 6);
+  }
+
+  executeBlocCapture(attackerBlocId, targetBlocId) {
+    if (this.phase !== 'PLAYING') return false;
+    if (!this.canCaptureBloc(attackerBlocId, targetBlocId)) return false;
+    const attackerBloc = this.blocs.get(attackerBlocId);
+    const cost = this.getBlocCaptureCost(attackerBlocId, targetBlocId);
+    if (!attackerBloc || attackerBloc.tokens < cost) return false;
+
+    attackerBloc.tokens -= cost;
+    // Attacker's capital country serves as the conquest anchor for coloring
+    const attackerCapital = [...this.countries.values()].find(c => COUNTRY_BLOC.get(c.id) === attackerBlocId)?.id;
+
+    for (const member of this.getBlocCountries(targetBlocId)) {
+      if (this.isEliminated(member.id)) continue;
+      // Absorb population + infra
+      const aliveSurvivors = Math.max(0, member.population);
+      // Inherit silos operational
+      for (const site of member.launchSites) {
+        site.disabled = false;
+        site.disabledUntil = 0;
+      }
+      // Convert batteries
+      for (const battery of this.interceptors) {
+        if (battery.countryId === member.id) {
+          battery.cooldownUntil = 0;
+        }
+      }
+      member.conqueredBy = attackerCapital;
+      member.population = 0;
+      member.cities.forEach(c => { c.population = 0; c.destroyed = true; });
+      this.eliminateCountry(member.id);
+      void aliveSurvivors;
+    }
+
+    this.addNotification(`${this.blocs.get(attackerBlocId)?.name} captured ${this.blocs.get(targetBlocId)?.name}!`, 'elimination');
+    return true;
+  }
 
   canInvade(attackerId, targetId) {
     if (attackerId === targetId) return false;
@@ -218,9 +352,10 @@ class GameState {
       duration: 3, // seconds
     });
 
-    if (!attacker || attacker.tokens < cost) return false;
+    const attackerBloc = this.getBloc(attackerId);
+    if (!attacker || !attackerBloc || attackerBloc.tokens < cost) return false;
 
-    attacker.tokens -= cost;
+    attackerBloc.tokens -= cost;
 
     // Absorb territory
     attacker.population += target.population;

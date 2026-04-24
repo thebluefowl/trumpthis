@@ -361,58 +361,50 @@ export const COUNTRY_MAP = new Map(COUNTRIES.map(c => [c.id, c]));
 // Set of playable country IDs
 export const PLAYABLE_IDS = new Set(COUNTRIES.map(c => c.id));
 
-// === Alliance Blocs ===
+// === Strategic Blocs (primary gameplay unit) ===
+// Five blocs, each a coalition of nations sharing economy, production, and defense.
+// Every playable country belongs to exactly one bloc.
 export const BLOCS = {
-  nato: {
-    id: 'nato', name: 'NATO', color: '#4488ff',
-    description: 'Western military alliance — strong conventional forces, widespread interceptor coverage',
-    members: ['840', '826', '250', '276', '124', '380', '724', '616', '578', '792'],
+  atlantic: {
+    id: 'atlantic', name: 'Atlantic Pact', color: '#38bdf8',
+    description: 'Western powers — broad industrial base, strong interceptor network.',
+    members: ['840', '826', '250', '276', '124', '380', '724', '392', '036'],
   },
-  eastern: {
-    id: 'eastern', name: 'Eastern Coalition', color: '#ff4444',
-    description: 'Authoritarian powers — heavy ICBM arsenals, centralized command',
-    members: ['643', '156', '408', '364'],
+  eurasian: {
+    id: 'eurasian', name: 'Eurasian Coalition', color: '#dc2626',
+    description: 'Authoritarian powers — deep ICBM arsenals, continental reach.',
+    members: ['643', '156', '408', '364', '398'],
   },
-  nonaligned: {
-    id: 'nonaligned', name: 'Non-Aligned Movement', color: '#44cc44',
-    description: 'Developing powers — safety in numbers, diplomatic flexibility',
-    members: ['356', '076', '360', '710', '818', '566', '764', '704'],
+  southasia: {
+    id: 'southasia', name: 'South Asian League', color: '#d97706',
+    description: 'Rival nuclear powers turned partners — population-heavy, regional depth.',
+    members: ['356', '586', '360', '764', '704'],
   },
-  independent: {
-    id: 'independent', name: 'Independent States', color: '#cccc44',
-    description: 'Unaligned nations — free agents, unpredictable, asymmetric strategies',
-    members: ['376', '586', '682', '036', '032', '484', '410', '804', '158', '752'],
+  southern: {
+    id: 'southern', name: 'Southern Concord', color: '#4ade80',
+    description: 'Latin America and Africa — resource-rich, strategically dispersed.',
+    members: ['076', '032', '484', '818', '566', '710', '578'],
   },
-  allies_ww2: {
-    id: 'allies_ww2', name: 'Allied Powers (WW2)', color: '#4488dd',
-    description: 'The grand alliance reborn — USA, UK, France, Russia. Uneasy partners against a common enemy.',
-    members: ['840', '826', '250', '643', '124', '036', '616'],
-  },
-  axis_ww2: {
-    id: 'axis_ww2', name: 'Axis Powers (WW2)', color: '#cc4444',
-    description: 'Germany, Japan, Italy + regional allies. Outnumbered but technologically fearsome.',
-    members: ['276', '392', '380', '156', '792', '364', '764'],
-  },
-  solo: {
-    id: 'solo', name: 'Go Solo', color: '#ff8800',
-    description: 'No starting allies — you against the world. Maximum difficulty.',
-    members: [],
+  middleeast: {
+    id: 'middleeast', name: 'Crescent Alliance', color: '#a78bfa',
+    description: 'Middle Eastern and Levantine powers — oil wealth, flash-point geography.',
+    members: ['376', '682', '792', '616', '158', '752', '804'],
   },
 };
 
-// Reverse lookup: countryId → bloc id
+// Reverse lookup: countryId → bloc id. Every playable country must map.
 export const COUNTRY_BLOC = new Map();
 for (const [blocId, bloc] of Object.entries(BLOCS)) {
-  if (blocId === 'solo') continue;
   for (const memberId of bloc.members) {
     COUNTRY_BLOC.set(memberId, blocId);
   }
 }
+// Any country without a bloc assignment falls into the Southern Concord by default.
 for (const c of COUNTRIES) {
   if (!COUNTRY_BLOC.has(c.id)) {
-    COUNTRY_BLOC.set(c.id, 'independent');
-    if (!BLOCS.independent.members.includes(c.id)) {
-      BLOCS.independent.members.push(c.id);
+    COUNTRY_BLOC.set(c.id, 'southern');
+    if (!BLOCS.southern.members.includes(c.id)) {
+      BLOCS.southern.members.push(c.id);
     }
   }
 }

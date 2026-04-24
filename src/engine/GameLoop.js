@@ -104,28 +104,31 @@ function checkGameOver() {
     return;
   }
 
-  const player = gameState.getPlayer();
-  if (!player) return;
+  const playerBlocId = gameState.playerBlocId;
+  if (!playerBlocId) return;
 
-  // Player eliminated
-  if (player.population <= 0 || gameState.isEliminated(player.id)) {
+  // Player bloc eliminated — all member countries dead
+  if (gameState.isBlocEliminated(playerBlocId)) {
     gameState.phase = 'GAME_OVER';
     events.emit('game:over', { result: 'defeat' });
     return;
   }
 
-  const activeNations = gameState.getActiveCountries();
-  const enemies = activeNations.filter(c => c.id !== player.id);
-
-  // === MILITARY VICTORY — all other nations eliminated ===
-  if (enemies.length === 0) {
+  // === MILITARY VICTORY — all other blocs eliminated ===
+  let enemyBlocsAlive = 0;
+  for (const [blocId] of gameState.blocs) {
+    if (blocId === playerBlocId) continue;
+    if (!gameState.isBlocEliminated(blocId)) enemyBlocsAlive++;
+  }
+  if (enemyBlocsAlive === 0) {
     gameState.phase = 'GAME_OVER';
     events.emit('game:over', { result: 'military_victory' });
     return;
   }
 
-  // === ECONOMIC VICTORY — accumulate enough tokens ===
-  if (player.tokens >= ECONOMIC_VICTORY_TOKENS) {
+  // === ECONOMIC VICTORY — bloc hits token cap ===
+  const bloc = gameState.blocs.get(playerBlocId);
+  if (bloc && bloc.tokens >= ECONOMIC_VICTORY_TOKENS) {
     gameState.phase = 'GAME_OVER';
     events.emit('game:over', { result: 'economic_victory' });
     return;

@@ -3,7 +3,13 @@ import { drag } from 'd3-drag';
 import { feature } from 'topojson-client';
 import versor from 'versor';
 import { COLORS } from '../constants.js';
-import { COUNTRIES, PLAYABLE_IDS, COUNTRY_MAP } from '../state/countryData.js';
+import { COUNTRIES, PLAYABLE_IDS, COUNTRY_MAP, BLOCS } from '../state/countryData.js';
+
+function hexToRgb(hex) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!m) return null;
+  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+}
 import { gameState } from '../state/GameState.js';
 import { events } from '../state/events.js';
 import { isRevealed as isIntelRevealed } from '../state/Intel.js';
@@ -177,7 +183,7 @@ function dragBehavior() {
         const r1 = versor.rotation(q1);
         projection.rotate(r1);
       }
-      renderPaths();
+      renderPaths(true); // force-render at 60fps during drag so overlay stays in sync
       events.emit('globe:rotated');
     });
 }
@@ -226,78 +232,70 @@ export function renderPaths(force = false) {
 function updateCountryStyles() {
   const playerId = gameState.playerCountryId;
 
+  const playerBlocId = gameState.playerBlocId;
   countriesGroup.selectAll('path.country')
     .attr('class', d => {
       const id = String(d.id);
       if (!PLAYABLE_IDS.has(id)) return 'country non-playable';
       if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') {
-        if (id === playerId) return 'country selected-player';
+        if (gameState.getBlocId(id) === playerBlocId) return 'country selected-player';
         return 'country';
       }
-      if (id === playerId) return 'country selected-player';
-      // Conquered territory takes the conqueror's color
+      // Ownership via original bloc, or via conqueror if eliminated
       const state = gameState.countries.get(id);
-      const owner = state?.conqueredBy;
-      if (gameState.isEliminated(id) && owner) {
-        if (owner === playerId) return 'country selected-player';
-        const rel = gameState.getRelationship(playerId, owner);
-        if (rel <= -50) return 'country hostile';
-        return 'country neutral-active';
+      let ownerBloc = gameState.getBlocId(id);
+      if (gameState.isEliminated(id)) {
+        if (state?.conqueredBy) ownerBloc = gameState.getBlocId(state.conqueredBy);
+        else return 'country non-playable';
       }
-      if (gameState.isEliminated(id)) return 'country non-playable';
-      const rel = gameState.getRelationship(playerId, id);
-      if (rel <= -50) return 'country hostile';
-      return 'country neutral-active';
+      if (ownerBloc === playerBlocId) return 'country selected-player';
+      // Bloc color comes from inline styles; no CSS class overrides.
+      return 'country bloc-other';
     })
     .style('fill', d => {
       const id = String(d.id);
       const state = gameState.countries.get(id);
       if (!state) return null;
       if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return null;
+      let ownerBloc = gameState.getBlocId(id);
       if (gameState.isEliminated(id)) {
-        const owner = state.conqueredBy;
-        if (!owner) return '#060608';
-        // Color by owner's team, slightly dimmed to show it's annexed territory
-        if (owner === playerId) return 'rgb(0, 28, 44)';
-        const rel = gameState.getRelationship(playerId, owner);
-        if (rel <= -50) return 'rgb(34, 6, 6)';
-        return 'rgb(10, 18, 10)';
+        ownerBloc = state.conqueredBy ? gameState.getBlocId(state.conqueredBy) : null;
+        if (!ownerBloc) return '#060608';
       }
+      const blocDef = BLOCS[ownerBloc];
+      if (!blocDef) return '#060608';
+      const isPlayerBloc = ownerBloc === playerBlocId;
 
-      // Fog of war — unrevealed nations are very dark
-      const revealed = id === playerId
-        || gameState.isAllied(playerId, id)
-        || isIntelRevealed(id, 'batteries'); // any intel = country is "seen"
-      if (!revealed) return '#141a26'; // fogged playable — slightly brighter than non-playable
+      // Fog of war — non-player-bloc countries hidden until intel reveals them
+      const revealed = isPlayerBloc || isIntelRevealed(id, 'batteries');
+      if (!revealed) return '#141a26';
 
       const pct = state.population / state.startingPopulation;
       const damageDarken = 1 - (1 - pct) * 0.5;
-
-      if (id === playerId) {
-        return `rgb(${Math.round(0 * damageDarken)}, ${Math.round(34 * damageDarken)}, ${Math.round(51 * damageDarken)})`;
-      }
-
-      if (gameState.isAllied(playerId, id)) {
-        return `rgb(${Math.round(0 * damageDarken)}, ${Math.round(25 * damageDarken)}, ${Math.round(40 * damageDarken)})`;
-      }
-
-      const rel = gameState.getRelationship(playerId, id);
-      if (rel <= -50) {
-        return `rgb(${Math.round(40 * damageDarken)}, ${Math.round(8 * damageDarken)}, ${Math.round(8 * damageDarken)})`;
-      }
-
-      return `rgb(${Math.round(10 * damageDarken)}, ${Math.round(18 * damageDarken)}, ${Math.round(10 * damageDarken)})`;
+      const rgb = hexToRgb(blocDef.color);
+      if (!rgb) return '#060608';
+      // Heavily muted tint over a dark base. Bloc identity lives in the border color.
+      const baseR = 12, baseG = 15, baseB = 22;
+      const tint = (isPlayerBloc ? 0.16 : 0.09) * damageDarken;
+      const r = Math.round(baseR + (rgb[0] - baseR) * tint);
+      const g = Math.round(baseG + (rgb[1] - baseG) * tint);
+      const b = Math.round(baseB + (rgb[2] - baseB) * tint);
+      return `rgb(${r}, ${g}, ${b})`;
     })
     .style('stroke', d => {
       const id = String(d.id);
       if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return null;
-      if (id === playerId || gameState.isAllied(playerId, id)) return null; // keep default
-      // Hostile nations always show red border — threats stay visible through fog
-      const rel = gameState.getRelationship(playerId, id);
-      if (rel <= -50) return null; // CSS .country.hostile paints red
-      const revealed = isIntelRevealed(id, 'batteries');
-      if (!revealed) return '#1e2436'; // dim but visible border for fogged
-      return null; // use CSS default
+      let ownerBloc = gameState.getBlocId(id);
+      const state = gameState.countries.get(id);
+      if (gameState.isEliminated(id) && state?.conqueredBy) {
+        ownerBloc = gameState.getBlocId(state.conqueredBy);
+      }
+      const blocDef = ownerBloc ? BLOCS[ownerBloc] : null;
+      if (!blocDef) return null;
+      // Dim the stroke to ~60% of the bloc hue so borders read as military, not neon
+      const rgb = hexToRgb(blocDef.color);
+      if (!rgb) return blocDef.color;
+      return `rgb(${Math.round(rgb[0] * 0.6)}, ${Math.round(rgb[1] * 0.6)}, ${Math.round(rgb[2] * 0.6)})`;
     });
 }
 
@@ -315,11 +313,11 @@ export function renderLaunchSites() {
   if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
   const sites = [];
-  // Only show player's launch sites (other nations' sites are hidden)
-  const playerCountry = gameState.getPlayer();
-  if (playerCountry) {
-    for (const site of playerCountry.launchSites) {
-      sites.push({ ...site, countryId: playerCountry.id, role: 'player' });
+  // Show every silo in the player's bloc
+  const playerBlocId = gameState.playerBlocId;
+  if (playerBlocId) {
+    for (const { site, countryId } of gameState.getBlocSilos(playerBlocId)) {
+      sites.push({ ...site, countryId, role: 'player' });
     }
   }
 
@@ -506,7 +504,7 @@ function onWheel(e) {
   e.preventDefault();
   // Trackpad pinch sends ctrlKey + small deltaY; scroll wheel sends larger deltaY
   applyZoom(e.deltaY);
-  renderPaths();
+  renderPaths(true); // force-render so overlay stays synced while pinching
   events.emit('globe:rotated');
 }
 
@@ -519,7 +517,7 @@ function onResize() {
   // Resize drag surface
   svg.select('.drag-surface').attr('width', width).attr('height', height);
 
-  renderPaths();
+  renderPaths(true);
   events.emit('globe:resized');
 }
 
@@ -572,10 +570,10 @@ export function renderBatteries() {
   if (!batteryGroup) return;
   if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
-  // Only show player's batteries + revealed enemy batteries
+  // Show all of the player's bloc batteries + revealed enemy batteries
+  const playerBlocId = gameState.playerBlocId;
   const batteries = gameState.interceptors.filter(b => {
-    if (b.countryId === gameState.playerCountryId) return true;
-    if (gameState.isAllied(gameState.playerCountryId, b.countryId)) return true;
+    if (gameState.getBlocId(b.countryId) === playerBlocId) return true;
     return isIntelRevealed(b.countryId, 'batteries');
   });
 
@@ -584,14 +582,11 @@ export function renderBatteries() {
 
   markers.exit().remove();
 
-  const playerId = gameState.playerCountryId;
+  const playerBloc = gameState.playerBlocId;
+  const classFor = d => gameState.getBlocId(d.countryId) === playerBloc ? 'battery-marker player' : 'battery-marker ai';
   const enter = markers.enter()
     .append('g')
-    .attr('class', d => {
-      if (d.countryId === playerId) return 'battery-marker player';
-      if (gameState.isAllied(playerId, d.countryId)) return 'battery-marker player'; // allies show as friendly
-      return 'battery-marker ai';
-    });
+    .attr('class', classFor);
 
   // Shield shape (inverted triangle)
   enter.append('path')
@@ -600,11 +595,7 @@ export function renderBatteries() {
 
   const all = enter.merge(markers);
   // Update class on every render (ownership can change via conquest/invasion)
-  all.attr('class', d => {
-    if (d.countryId === playerId) return 'battery-marker player';
-    if (gameState.isAllied(playerId, d.countryId)) return 'battery-marker player';
-    return 'battery-marker ai';
-  });
+  all.attr('class', classFor);
   all.attr('transform', d => {
     if (!isVisible(d.position)) return 'translate(-9999, -9999)';
     const [x, y] = projectPoint(d.position);
@@ -637,11 +628,21 @@ export function isPointInCountry(lonLat, countryId) {
   return feats.some(f => geoContains(f, lonLat));
 }
 
-// True if point is on countryId's original land OR any territory they've conquered.
+// True if point is on any territory controlled by the same bloc as ownerId,
+// including conquered members.
 export function isPointInOwnedTerritory(lonLat, ownerId) {
-  if (isPointInCountry(lonLat, ownerId)) return true;
+  const blocId = gameState.getBlocId(ownerId);
+  if (!blocId) return isPointInCountry(lonLat, ownerId);
   for (const [id, state] of gameState.countries) {
-    if (state.conqueredBy === ownerId && isPointInCountry(lonLat, id)) return true;
+    if (gameState.getBlocId(id) !== blocId) continue;
+    if (gameState.isEliminated(id) && state.conqueredBy && gameState.getBlocId(state.conqueredBy) !== blocId) continue;
+    if (isPointInCountry(lonLat, id)) return true;
+  }
+  // Also count territory conquered by anyone in this bloc
+  for (const [id, state] of gameState.countries) {
+    if (state.conqueredBy && gameState.getBlocId(state.conqueredBy) === blocId) {
+      if (isPointInCountry(lonLat, id)) return true;
+    }
   }
   return false;
 }

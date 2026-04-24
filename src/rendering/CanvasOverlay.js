@@ -17,6 +17,7 @@ import {
   projectPoint,
   isVisible,
   geoDistance,
+  createInterpolator,
 } from './Projection.js';
 import { events } from '../state/events.js';
 
@@ -237,23 +238,22 @@ function drawTrail(trail) {
   const age = (gameState.elapsed - trail.startTime) * 1000;
   const alpha = Math.max(0, 1 - age / TRAIL_FADE_TIME) * 0.4;
   if (alpha <= 0) return;
+  const pts = trail.points;
+  if (pts.length < 2) return;
 
-  for (let i = 1; i < trail.points.length; i++) {
-    const prev = trail.points[i - 1];
-    const curr = trail.points[i];
-    if (!isVisible(prev) || !isVisible(curr)) continue;
-
-    const p1 = projectPoint(prev);
-    const p2 = projectPoint(curr);
-    if (!p1 || !p2) continue;
-
-    ctx.beginPath();
-    ctx.moveTo(p1[0], p1[1]);
-    ctx.lineTo(p2[0], p2[1]);
-    ctx.strokeStyle = withAlpha(COLORS.MISSILE_TRAIL, alpha * (i / trail.points.length));
-    ctx.lineWidth = 1;
-    ctx.stroke();
+  // Build one contiguous path, breaking on off-screen segments.
+  ctx.beginPath();
+  let moved = false;
+  for (let i = 0; i < pts.length; i++) {
+    if (!isVisible(pts[i])) { moved = false; continue; }
+    const p = projectPoint(pts[i]);
+    if (!p) { moved = false; continue; }
+    if (!moved) { ctx.moveTo(p[0], p[1]); moved = true; }
+    else ctx.lineTo(p[0], p[1]);
   }
+  ctx.strokeStyle = withAlpha(COLORS.MISSILE_TRAIL, alpha * 0.7);
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 function drawExplosion(explosion) {
@@ -291,16 +291,7 @@ function drawExplosion(explosion) {
       const fbProgress = progress / 0.4;
       const fbR = maxR * easeOutQuad(fbProgress);
       const fbAlpha = 1 - fbProgress * 0.5;
-      const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], fbR);
-      grad.addColorStop(0, withAlpha('#ffffff', fbAlpha));
-      grad.addColorStop(0.2, withAlpha('#ffcc00', fbAlpha * 0.9));
-      grad.addColorStop(0.5, withAlpha('#ff6600', fbAlpha * 0.7));
-      grad.addColorStop(0.8, withAlpha('#ff2200', fbAlpha * 0.4));
-      grad.addColorStop(1, 'transparent');
-      ctx.beginPath();
-      ctx.arc(pos[0], pos[1], fbR, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
+      blitSprite(getExplosionSprite('nuke_fireball'), pos[0], pos[1], fbR * 2, fbAlpha);
     }
 
     // Phase 3: mushroom cloud ring (10-60%)
@@ -320,14 +311,7 @@ function drawExplosion(explosion) {
       const glowProgress = (progress - 0.2) / 0.8;
       const glowR = maxR * 0.7;
       const glowAlpha = (1 - glowProgress) * 0.3;
-      const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], glowR);
-      grad.addColorStop(0, withAlpha('#ff4400', glowAlpha));
-      grad.addColorStop(0.5, withAlpha('#991100', glowAlpha * 0.5));
-      grad.addColorStop(1, 'transparent');
-      ctx.beginPath();
-      ctx.arc(pos[0], pos[1], glowR, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
+      blitSprite(getExplosionSprite('nuke_glow'), pos[0], pos[1], glowR * 2, glowAlpha);
     }
 
     // Phase 5: outer shockwave ring (5-50%)
@@ -349,22 +333,8 @@ function drawExplosion(explosion) {
   const currentRadius = splashR * easeOutQuad(Math.min(progress * 2, 1));
   const alpha = 1 - easeInQuad(progress);
 
-  const explosionColor = explosion.isEMP ? '#8844ff' : COLORS.EXPLOSION;
-  const outerColor = explosion.isEMP ? '#6622cc' : COLORS.MISSILE_TRAIL;
-
-  // Outer glow
-  const grad = ctx.createRadialGradient(
-    pos[0], pos[1], 0,
-    pos[0], pos[1], currentRadius
-  );
-  grad.addColorStop(0, withAlpha(explosionColor, alpha));
-  grad.addColorStop(0.4, withAlpha(outerColor, alpha * 0.6));
-  grad.addColorStop(1, 'transparent');
-
-  ctx.beginPath();
-  ctx.arc(pos[0], pos[1], currentRadius, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
+  // Outer glow from cached sprite
+  blitSprite(getExplosionSprite(explosion.isEMP ? 'emp' : 'std'), pos[0], pos[1], currentRadius * 2, alpha);
 
   // Inner bright core
   if (progress < 0.3) {
@@ -395,32 +365,39 @@ function drawTargetingPreview() {
   const { from, to } = targetingPreview;
   if (!isVisible(from) && !isVisible(to)) return;
 
-  const p1 = projectPoint(from);
-  const p2 = projectPoint(to);
-  if (!p1 || !p2) return;
-
-  // Dashed line from launch site to target
+  // Trace the great-circle arc the missile will actually fly
+  const interp = createInterpolator(from, to);
+  const STEPS = 30;
   ctx.beginPath();
   ctx.setLineDash([4, 4]);
-  ctx.moveTo(p1[0], p1[1]);
-  ctx.lineTo(p2[0], p2[1]);
+  let moved = false;
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS;
+    const coord = interp(t);
+    if (!isVisible(coord)) { moved = false; continue; }
+    const p = projectPoint(coord);
+    if (!p) { moved = false; continue; }
+    if (!moved) { ctx.moveTo(p[0], p[1]); moved = true; }
+    else ctx.lineTo(p[0], p[1]);
+  }
   ctx.strokeStyle = withAlpha(COLORS.PLAYER, 0.5);
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Cost label at target end
-  const playerId = gameState.playerCountryId;
-  if (playerId) {
+  const p2 = projectPoint(to);
+  if (!p2) return;
+
+  // Missile type + loaded-count label at target end
+  if (gameState.playerBlocId) {
     const typeKey = getPlayerMissileType();
     const mtype = MISSILE_TYPES[typeKey];
     if (mtype) {
-      const cost = getEffectiveCost(playerId, typeKey, from, to);
-      const player = gameState.getPlayer();
-      const canAfford = player && player.tokens >= cost;
-
-      // Background pill
-      const label = `${mtype.name} ${cost}◆`;
+      const silos = gameState.getBlocSilos(gameState.playerBlocId);
+      let loaded = 0;
+      for (const { site } of silos) loaded += site.loadedMissiles?.[typeKey] || 0;
+      const canFire = loaded > 0;
+      const label = `${mtype.name} ×${loaded}`;
       ctx.font = '10px "JetBrains Mono", monospace';
       const textWidth = ctx.measureText(label).width;
       const lx = p2[0] + 10;
@@ -429,7 +406,7 @@ function drawTargetingPreview() {
       ctx.fillStyle = 'rgba(8, 8, 14, 0.85)';
       ctx.fillRect(lx - 4, ly - 10, textWidth + 8, 14);
 
-      ctx.fillStyle = canAfford ? 'rgba(234, 179, 8, 0.9)' : 'rgba(220, 38, 38, 0.9)';
+      ctx.fillStyle = canFire ? 'rgba(234, 179, 8, 0.9)' : 'rgba(220, 38, 38, 0.9)';
       ctx.fillText(label, lx, ly);
 
       // Damage estimate
@@ -486,27 +463,18 @@ function drawIntercept(intercept) {
     const currentX = bp[0] + (ip[0] - bp[0]) * t;
     const currentY = bp[1] + (ip[1] - bp[1]) * t;
 
-    // Trail
-    const trailAlpha = 0.5 * (1 - t * 0.3);
+    // Interceptor head — small bright dot
     ctx.beginPath();
-    ctx.moveTo(bp[0], bp[1]);
-    ctx.lineTo(currentX, currentY);
-    ctx.strokeStyle = withAlpha(COLORS.INTERCEPTOR, trailAlpha);
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Interceptor head — bright dot
-    ctx.beginPath();
-    ctx.arc(currentX, currentY, 2.5, 0, Math.PI * 2);
+    ctx.arc(currentX, currentY, 1.2, 0, Math.PI * 2);
     ctx.fillStyle = COLORS.INTERCEPTOR;
     ctx.fill();
 
-    // Small glow at head
-    const grad = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 6);
-    grad.addColorStop(0, withAlpha(COLORS.INTERCEPTOR, 0.4));
+    // Faint glow at head
+    const grad = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 3);
+    grad.addColorStop(0, withAlpha(COLORS.INTERCEPTOR, 0.35));
     grad.addColorStop(1, 'transparent');
     ctx.beginPath();
-    ctx.arc(currentX, currentY, 6, 0, Math.PI * 2);
+    ctx.arc(currentX, currentY, 3, 0, Math.PI * 2);
     ctx.fillStyle = grad;
     ctx.fill();
   } else {
@@ -744,13 +712,13 @@ function drawContamination(zone) {
 // === Interceptor Range Circles ===
 function drawInterceptorRanges() {
   if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
-  const playerId = gameState.playerCountryId;
+  const playerBloc = gameState.playerBlocId;
 
   for (const battery of gameState.interceptors) {
-    if (battery.countryId !== playerId) continue;
+    if (gameState.getBlocId(battery.countryId) !== playerBloc) continue;
     if (!isVisible(battery.position)) continue;
-    const pos = projectPoint(battery.position);
-    if (!pos) return;
+    const pos = projectStatic(battery.position);
+    if (!pos) continue;
 
     const globeRadius = getGlobeRadius();
     const rangePixels = battery.range * globeRadius;
@@ -927,7 +895,7 @@ function drawResourceNodes() {
   const nodes = getAllNodes();
   for (const node of nodes) {
     if (!isVisible(node.coords)) continue;
-    const pos = projectPoint(node.coords);
+    const pos = projectStatic(node.coords);
     if (!pos) continue;
 
     const color = RESOURCE_COLORS[node.type] || '#888';
@@ -960,9 +928,94 @@ function drawResourceNodes() {
   }
 }
 
+// === Projection cache for static entities ===
+// Invalidates the instant rotate/scale/translate changes, so the overlay can
+// never drift from the SVG globe during drag or auto-rotate.
+const _projCache = new Map();
+let _lastR0 = NaN, _lastR1 = NaN, _lastR2 = NaN;
+let _lastScale = NaN, _lastTx = NaN, _lastTy = NaN;
+
+function projectStatic(coords) {
+  const p = getProjection();
+  const r = p.rotate();
+  const s = p.scale();
+  const t = p.translate();
+  if (r[0] !== _lastR0 || r[1] !== _lastR1 || r[2] !== _lastR2
+      || s !== _lastScale || t[0] !== _lastTx || t[1] !== _lastTy) {
+    _projCache.clear();
+    _lastR0 = r[0]; _lastR1 = r[1]; _lastR2 = r[2];
+    _lastScale = s; _lastTx = t[0]; _lastTy = t[1];
+  }
+  const key = coords[0] + ',' + coords[1];
+  let cached = _projCache.get(key);
+  if (cached !== undefined) return cached;
+  cached = projectPoint(coords) || null;
+  _projCache.set(key, cached);
+  return cached;
+}
+
 // === City Lights ===
-let cityLightCache = null;
-let cityLightCacheTime = 0;
+let glowSpriteLive = null;
+let glowSpriteDead = null;
+
+function buildGlowSprite(color) {
+  const size = 64; // sprite is 64×64, drawn scaled per city
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, withAlpha(color, 1));
+  grad.addColorStop(0.3, withAlpha(color, 0.5));
+  grad.addColorStop(1, 'transparent');
+  g.fillStyle = grad;
+  g.beginPath();
+  g.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  g.fill();
+  return c;
+}
+
+// Explosion sprites (standard, EMP, nuke fireball, nuke glow) — baked once.
+const _explSprites = new Map();
+function getExplosionSprite(key) {
+  if (_explSprites.has(key)) return _explSprites.get(key);
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  if (key === 'std') {
+    grad.addColorStop(0, withAlpha(COLORS.EXPLOSION, 1));
+    grad.addColorStop(0.4, withAlpha(COLORS.MISSILE_TRAIL, 0.6));
+    grad.addColorStop(1, 'transparent');
+  } else if (key === 'emp') {
+    grad.addColorStop(0, withAlpha('#8844ff', 1));
+    grad.addColorStop(0.4, withAlpha('#6622cc', 0.6));
+    grad.addColorStop(1, 'transparent');
+  } else if (key === 'nuke_fireball') {
+    grad.addColorStop(0, withAlpha('#ffffff', 1));
+    grad.addColorStop(0.2, withAlpha('#ffcc00', 0.9));
+    grad.addColorStop(0.5, withAlpha('#ff6600', 0.7));
+    grad.addColorStop(0.8, withAlpha('#ff2200', 0.4));
+    grad.addColorStop(1, 'transparent');
+  } else if (key === 'nuke_glow') {
+    grad.addColorStop(0, withAlpha('#ff4400', 1));
+    grad.addColorStop(0.5, withAlpha('#991100', 0.5));
+    grad.addColorStop(1, 'transparent');
+  }
+  g.fillStyle = grad;
+  g.beginPath();
+  g.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  g.fill();
+  _explSprites.set(key, c);
+  return c;
+}
+
+function blitSprite(sprite, cx, cy, diameter, alpha) {
+  const prev = ctx.globalAlpha;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(sprite, cx - diameter / 2, cy - diameter / 2, diameter, diameter);
+  ctx.globalAlpha = prev;
+}
 
 function drawCityLights() {
   const now = performance.now() / 1000;
@@ -982,7 +1035,7 @@ function drawCityLights() {
     }
     for (const city of (country.cities || [])) {
       if (!isVisible(city.coords)) continue;
-      const screenPos = projectPoint(city.coords);
+      const screenPos = projectStatic(city.coords);
       if (!screenPos) continue;
 
       const popRatio = city.startingPopulation > 0
@@ -996,20 +1049,16 @@ function drawCityLights() {
 
       const brightness = city.destroyed ? 0.02 : popRatio * 0.25 * flicker;
 
-      // Glow
+      // Glow — cached sprite scaled per city (avoids per-frame gradient allocation)
       const r = 1.5 + popRatio * 2.5;
-      const grad = ctx.createRadialGradient(
-        screenPos[0], screenPos[1], 0,
-        screenPos[0], screenPos[1], r * 3
-      );
-      const glowColor = city.destroyed ? '#331100' : '#ffdd88';
-      grad.addColorStop(0, withAlpha(glowColor, brightness * 0.6));
-      grad.addColorStop(1, 'transparent');
-
-      ctx.beginPath();
-      ctx.arc(screenPos[0], screenPos[1], r * 3, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
+      const glowDiameter = r * 6;
+      if (!glowSpriteLive) glowSpriteLive = buildGlowSprite('#ffdd88');
+      if (!glowSpriteDead) glowSpriteDead = buildGlowSprite('#331100');
+      const sprite = city.destroyed ? glowSpriteDead : glowSpriteLive;
+      const prevAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = brightness * 0.6;
+      ctx.drawImage(sprite, screenPos[0] - glowDiameter / 2, screenPos[1] - glowDiameter / 2, glowDiameter, glowDiameter);
+      ctx.globalAlpha = prevAlpha;
 
       // Core dot — color indicates health, flickers
       const coreColor = city.destroyed ? '#440000' :

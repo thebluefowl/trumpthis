@@ -3,20 +3,20 @@ import { MISSILE_TYPES, PRODUCTION, FISSILE_PER_URANIUM_NODE, RAREEARTH_PER_NODE
 import { enqueueMissile, cancelQueueItem } from '../engine/ProductionSystem.js';
 import { getOwnedResources } from '../engine/ResourceSystem.js';
 
-let builtForPlayerId = null;
+let builtForBlocId = null;
 
 export function renderProductionTab(el) {
-  const p = gameState.getPlayer();
-  if (!p) { el.innerHTML = ''; builtForPlayerId = null; return; }
+  const blocId = gameState.playerBlocId;
+  const bloc = blocId ? gameState.blocs.get(blocId) : null;
+  if (!bloc) { el.innerHTML = ''; builtForBlocId = null; return; }
 
-  // Build structure only once per player (or when tab reopens)
-  if (builtForPlayerId !== p.id || !el.querySelector('.prod-root')) {
+  if (builtForBlocId !== blocId || !el.querySelector('.prod-root')) {
     el.innerHTML = buildStructure();
-    builtForPlayerId = p.id;
-    wireEnqueueButtons(el, p);
+    builtForBlocId = blocId;
+    wireEnqueueButtons(el, bloc);
   }
 
-  updateValues(el, p);
+  updateValues(el, bloc);
 }
 
 function buildStructure() {
@@ -54,18 +54,18 @@ function buildStructure() {
   `;
 }
 
-function wireEnqueueButtons(el, p) {
+function wireEnqueueButtons(el, bloc) {
   el.onclick = (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     e.stopPropagation();
     const action = btn.dataset.action;
     if (action === 'enqueue') {
-      enqueueMissile(p.id, btn.dataset.type, 1);
-      updateValues(el, p);
+      enqueueMissile(bloc.id, btn.dataset.type, 1);
+      updateValues(el, bloc);
     } else if (action === 'cancel') {
-      cancelQueueItem(p.id, parseInt(btn.dataset.idx));
-      updateValues(el, p);
+      cancelQueueItem(bloc.id, parseInt(btn.dataset.idx));
+      updateValues(el, bloc);
     }
   };
 }
@@ -75,33 +75,35 @@ function setText(el, selector, text) {
   if (node && node.textContent !== text) node.textContent = text;
 }
 
-function updateValues(el, p) {
-  // Resource rates
-  const owned = getOwnedResources(p.id);
+function updateValues(el, bloc) {
+  // Aggregate resource rates across all bloc-owned nodes
   let fissileRate = 0, rareRate = 0;
-  for (const node of owned) {
-    if (node.type === 'uranium') fissileRate += FISSILE_PER_URANIUM_NODE;
-    else if (node.type === 'rare_earth') rareRate += RAREEARTH_PER_NODE;
-  }
-
-  const loaded = {};
-  for (const silo of p.launchSites) {
-    for (const t in (silo.loadedMissiles || {})) {
-      loaded[t] = (loaded[t] || 0) + silo.loadedMissiles[t];
+  for (const country of gameState.getBlocCountries(bloc.id)) {
+    if (gameState.isEliminated(country.id)) continue;
+    for (const node of getOwnedResources(country.id)) {
+      if (node.type === 'uranium') fissileRate += FISSILE_PER_URANIUM_NODE;
+      else if (node.type === 'rare_earth') rareRate += RAREEARTH_PER_NODE;
     }
   }
 
-  // Top resources
-  setText(el, '[data-field="tokens"]', Math.floor(p.tokens).toString());
-  setText(el, '[data-field="fissile"]', (p.fissile || 0).toFixed(1));
-  setText(el, '[data-field="rare"]', (p.rareEarth || 0).toFixed(1));
+  // Total loaded across all bloc silos
+  const loaded = {};
+  for (const { site } of gameState.getBlocSilos(bloc.id)) {
+    for (const t in (site.loadedMissiles || {})) {
+      loaded[t] = (loaded[t] || 0) + site.loadedMissiles[t];
+    }
+  }
+
+  setText(el, '[data-field="tokens"]', Math.floor(bloc.tokens).toString());
+  setText(el, '[data-field="fissile"]', (bloc.fissile || 0).toFixed(1));
+  setText(el, '[data-field="rare"]', (bloc.rareEarth || 0).toFixed(1));
   setText(el, '[data-field="fissileRate"]', fissileRate > 0 ? `+${fissileRate.toFixed(2)}/s` : '');
   setText(el, '[data-field="rareRate"]', rareRate > 0 ? `+${rareRate.toFixed(2)}/s` : '');
-  setText(el, '[data-field="factories"]', (p.factoryCount || 0).toString());
+  setText(el, '[data-field="factories"]', (bloc.factoryCount || 0).toString());
 
-  // Queue
-  const queue = p.productionQueue || [];
-  const factoryCount = p.factoryCount || 0;
+  const queue = bloc.productionQueue || [];
+  const factoryCount = bloc.factoryCount || 0;
+  const p = bloc; // alias so existing references below keep working
   setText(el, '[data-field="queueInfo"]', `${queue.length} in line · ${factoryCount} building`);
 
   const queueList = el.querySelector('[data-field="queueList"]');
@@ -162,5 +164,5 @@ function updateValues(el, p) {
 }
 
 export function resetProductionTab() {
-  builtForPlayerId = null;
+  builtForBlocId = null;
 }

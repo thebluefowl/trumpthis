@@ -5,8 +5,8 @@ import { initGlobe, initLaunchSites, initBatteries, renderPaths, rotateTo, forma
 import { getProjectionType, setPanelOffsets } from './rendering/Projection.js';
 import { initCanvas } from './rendering/CanvasOverlay.js';
 import { initHUD } from './rendering/HUD.js';
-import { initCountrySelect, showCountrySelect, resetCountrySelect } from './ui/CountrySelect.js';
 import { initAlliancePicker, showAlliancePicker } from './ui/AlliancePicker.js';
+import { BLOCS } from './state/countryData.js';
 import { initLaunchUI, resetLaunchUI } from './ui/LaunchUI.js';
 import { initSidebar, renderSidebar, resetSidebar } from './ui/Sidebar.js';
 import { initCombatLog, resetCombatLog } from './ui/SidebarLog.js';
@@ -40,7 +40,6 @@ async function init() {
   await initGlobe(svgEl);
   initCanvas(canvasEl);
   initHUD();
-  initCountrySelect();
   initAlliancePicker();
   initLaunchUI();
   initSidebar();
@@ -90,24 +89,19 @@ async function init() {
     setMusicPhase('menu');
   }, { once: true });
 
-  // Briefing → Country select
+  // Briefing → Bloc pick (country select removed)
   document.getElementById('btn-start').addEventListener('click', () => {
     setMusicPhase('calm');
     hidePanel('panel-briefing');
     showPanel('panel-setup');
-    setPanelOffsets(360, 0); // setup panel is 300px
+    setPanelOffsets(360, 0);
     stopAutoRotate();
     setInteractable(true);
     if (getProjectionType() === 'orthographic') {
       switchProjection();
     }
-    showCountrySelect();
+    showAlliancePicker(null);
     window.dispatchEvent(new Event('resize'));
-  });
-
-  // Country selected → Alliance picker (swap sidebar content)
-  events.on('game:start', () => {
-    showAlliancePicker(gameState.playerCountryId);
   });
 
   // Back navigation
@@ -121,14 +115,7 @@ async function init() {
     setMusicPhase('menu');
   });
 
-  events.on('nav:back-to-country', () => {
-    // Unlock country selection, go back to country list
-    resetCountrySelect();
-    gameState.playerCountryId = null;
-    showCountrySelect();
-  });
-
-  // Alliance selected → Start game
+  // Bloc selected → Start game (auto-pick capital country within the bloc)
   events.on('bloc:selected', (blocId) => {
     startGame(blocId);
   });
@@ -138,7 +125,11 @@ async function init() {
 }
 
 function startGame(blocId) {
-  gameState.startGame(gameState.playerCountryId, blocId);
+  // Auto-pick the first member of the bloc as the capital country —
+  // used internally for camera focus and missile attribution only.
+  const blocDef = BLOCS[blocId];
+  const capitalCountry = blocDef?.members?.[0] || null;
+  gameState.startGame(capitalCountry, blocId);
   initRelationships(blocId);
 
   hideAllPanels();
@@ -249,7 +240,6 @@ function showExtinctionScreen() {
 
 function restartGame() {
   gameState.reset();
-  resetCountrySelect();
   resetLaunchUI();
   resetSidebar();
   resetNewsTicker();

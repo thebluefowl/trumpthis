@@ -8,7 +8,8 @@ export function renderResearchTab(el) {
 
   const current = getCurrentResearch(playerId);
   const completed = getCompletedTechs(playerId);
-  const player = gameState.getPlayer();
+  const bloc = gameState.blocs.get(gameState.playerBlocId);
+  const availableTokens = bloc ? bloc.tokens : 0;
 
   let html = '';
 
@@ -40,7 +41,7 @@ export function renderResearchTab(el) {
       const isDone = completed.has(techId);
       const canStart = canResearch(playerId, techId);
       const isCurrentTech = current?.techId === techId;
-      const canAfford = player.tokens >= tech.cost;
+      const canAfford = availableTokens >= tech.cost;
       const prereqMet = !tech.requires || completed.has(tech.requires);
 
       let status, statusColor;

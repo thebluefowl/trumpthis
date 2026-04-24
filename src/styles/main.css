@@ -689,6 +689,7 @@ body.targeting .country, body.placing .country { cursor: crosshair; }
 .country.selected-player { fill: #0c1a2e; stroke: var(--cyan); stroke-width: 1; }
 .country.allied { stroke: var(--cyan); stroke-width: 0.7; }
 .country.hostile { stroke: var(--red); stroke-width: 0.7; }
+.country.bloc-other { stroke-width: 0.7; }
 .country.neutral-active { stroke: #2a3348; stroke-width: 0.5; }
 .outline { fill: none; stroke: #2a3348; stroke-width: 1; stroke-opacity: 0.3; }
 

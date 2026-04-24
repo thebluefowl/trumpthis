@@ -42,7 +42,7 @@ function getAIState(countryId) {
 
 let _aiDebugLogged = false;
 export function updateAIManager(dt) {
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
   if (gameState._madActive) return;
 
   const aiNations = gameState.getActiveAI();
@@ -82,19 +82,21 @@ function updateNationAI(country, dt) {
     state.productionCooldown = 2000 + Math.random() * 2500;
   }
 
-  // === Attack logic ===
-  state.timeSinceAttack += dt * 1000;
-  if (gameState.elapsed >= AI_WARMUP && state.timeSinceAttack >= state.attackCooldown) {
-    const target = pickTarget(country);
-    if (target) {
-      const fired = launchAtTarget(country, target);
-      state.timeSinceAttack = 0;
-      if (fired) {
-        const variance = 1 - AI_COOLDOWN_VARIANCE / 2 + Math.random() * AI_COOLDOWN_VARIANCE;
-        state.attackCooldown = AI_LAUNCH_COOLDOWN * variance / personality.attackBias;
-      } else {
-        // Nothing loaded or target unreachable — recheck in 2s
-        state.attackCooldown = 2000;
+  // === Attack logic (locked during SETUP) ===
+  if (gameState.phase === 'PLAYING') {
+    state.timeSinceAttack += dt * 1000;
+    if (gameState.elapsed >= AI_WARMUP && state.timeSinceAttack >= state.attackCooldown) {
+      const target = pickTarget(country);
+      if (target) {
+        const fired = launchAtTarget(country, target);
+        state.timeSinceAttack = 0;
+        if (fired) {
+          const variance = 1 - AI_COOLDOWN_VARIANCE / 2 + Math.random() * AI_COOLDOWN_VARIANCE;
+          state.attackCooldown = AI_LAUNCH_COOLDOWN * variance / personality.attackBias;
+        } else {
+          // Nothing loaded or target unreachable — recheck in 2s
+          state.attackCooldown = 2000;
+        }
       }
     }
   }
@@ -263,18 +265,21 @@ function pickMissileType(country, target, loadedTypes) {
 }
 
 function launchAtTarget(fromCountry, toCountry) {
-  // Re-enable sites whose cooldown expired
-  for (const site of fromCountry.launchSites) {
-    if (site.disabled && gameState.elapsed >= (site.disabledUntil || 0)) {
-      site.disabled = false;
-    }
-  }
-  const activeSites = fromCountry.launchSites.filter(s => !s.disabled);
-  if (activeSites.length === 0) return false;
+  const blocId = gameState.getBlocId(fromCountry.id);
+  if (!blocId) return false;
 
-  // Collect types loaded across active silos
+  // Gather active silos across the whole bloc
+  const blocSilos = gameState.getBlocSilos(blocId);
+  const active = [];
+  for (const entry of blocSilos) {
+    const site = entry.site;
+    if (site.disabled && gameState.elapsed >= (site.disabledUntil || 0)) site.disabled = false;
+    if (!site.disabled) active.push(entry);
+  }
+  if (active.length === 0) return false;
+
   const loadedTypes = new Set();
-  for (const site of activeSites) {
+  for (const { site } of active) {
     for (const t in (site.loadedMissiles || {})) {
       if (site.loadedMissiles[t] > 0) loadedTypes.add(t);
     }
@@ -286,19 +291,20 @@ function launchAtTarget(fromCountry, toCountry) {
   const mtype = MISSILE_TYPES[typeKey];
   if (!mtype) return false;
 
-  // Find a silo that has this type loaded
-  const launchSite = activeSites.find(s => (s.loadedMissiles && s.loadedMissiles[typeKey] > 0));
-  if (!launchSite) return false;
+  const launchEntry = active.find(e => e.site.loadedMissiles && e.site.loadedMissiles[typeKey] > 0);
+  if (!launchEntry) return false;
+  const launchSite = launchEntry.site;
 
   const target = pickStrategicTarget(toCountry, typeKey, fromCountry);
   if (!target) return false;
 
-  createMissile(fromCountry.id, toCountry.id, launchSite.coords, target, typeKey, false);
+  // Attribute the launch to the silo's owning country — that's who fired it
+  createMissile(launchEntry.countryId, toCountry.id, launchSite.coords, target, typeKey, false);
   launchSite.loadedMissiles[typeKey] -= 1;
   if (launchSite.loadedMissiles[typeKey] <= 0) delete launchSite.loadedMissiles[typeKey];
   fromCountry.combatStats.missilesLaunched++;
 
-  if (fromCountry.id === gameState.playerCountryId) {
+  if (gameState.isInPlayerBloc(fromCountry.id)) {
     gameState.stats.playerLaunched++;
   }
   return true;
@@ -309,21 +315,23 @@ function launchAtTarget(fromCountry, toCountry) {
 // what's unlocked, what resources are available, and personality preferences.
 // Keeps the queue short so newly-unlocked techs enter rotation quickly.
 function tryQueueProduction(country) {
-  const MAX_QUEUE = 6;
-  if ((country.productionQueue?.length || 0) >= MAX_QUEUE) return;
+  const bloc = gameState.getBloc(country.id);
+  if (!bloc) return;
+  const MAX_QUEUE = 8; // slightly bigger for blocs since many AIs feed it
+  if ((bloc.productionQueue?.length || 0) >= MAX_QUEUE) return;
 
   const personality = getPersonality(country.id);
   const elapsed = gameState.elapsed;
 
-  // Filter to unlocked types with available resources
+  // Filter to unlocked types with available resources (bloc-level)
   const candidates = Object.entries(PRODUCTION)
     .filter(([typeId]) => {
       const mtype = MISSILE_TYPES[typeId];
       if (!mtype) return false;
       if (mtype.unlockAt !== undefined && elapsed < mtype.unlockAt) return false;
       const cfg = PRODUCTION[typeId];
-      if ((cfg.fissile || 0) > (country.fissile || 0)) return false;
-      if ((cfg.rareEarth || 0) > (country.rareEarth || 0)) return false;
+      if ((cfg.fissile || 0) > (bloc.fissile || 0)) return false;
+      if ((cfg.rareEarth || 0) > (bloc.rareEarth || 0)) return false;
       return true;
     })
     .map(([typeId]) => typeId);
@@ -353,7 +361,7 @@ function tryQueueProduction(country) {
     if (r <= 0) { pick = id; break; }
   }
 
-  enqueueMissile(country.id, pick, 1);
+  enqueueMissile(bloc.id, pick, 1);
 }
 
 function pickStrategicTarget(targetCountry, typeKey, fromCountry) {
@@ -507,10 +515,11 @@ function tryResearch(country) {
       'superpower_economy', 'aegis_network', 'total_awareness', 'extinction_protocol',
     ];
 
+  const bloc = gameState.getBloc(country.id);
   for (const techId of priorities) {
     if (canResearch(country.id, techId)) {
       const tech = TECH_DEFS[techId];
-      if (country.tokens >= tech.cost * 1.5) {
+      if (bloc && bloc.tokens >= tech.cost * 1.5) {
         startResearch(country.id, techId);
         return;
       }
@@ -520,19 +529,51 @@ function tryResearch(country) {
 
 function tryPlaceBattery(country) {
   if (!gameState.canPlaceBattery(country.id)) return;
-  if (country.tokens < INTERCEPTOR_COST) return;
+  const bloc = gameState.getBloc(country.id);
+  if (!bloc) return;
+  const cost = gameState.getBatteryCost(country.id);
+  if (bloc.tokens < cost) return;
 
-  const positions = [
-    country.centroid,
-    ...country.launchSites.map(s => s.coords),
-  ];
-  const basePos = positions[Math.floor(Math.random() * positions.length)];
-  const offset = [
-    basePos[0] + (Math.random() - 0.5) * 4,
-    basePos[1] + (Math.random() - 0.5) * 4,
-  ];
+  // Build defense targets: bloc cities weighted by population, plus active silos
+  const targets = [];
+  for (const member of gameState.getBlocCountries(bloc.id)) {
+    if (gameState.isEliminated(member.id)) continue;
+    for (const city of member.cities) {
+      if (city.destroyed || city.population <= 0) continue;
+      targets.push({ pos: city.coords, weight: city.population / 1_000_000 });
+    }
+    for (const site of member.launchSites) {
+      if (site.disabled) continue;
+      targets.push({ pos: site.coords, weight: 3 });
+    }
+  }
+  if (targets.length === 0) return;
 
-  placeBattery(country.id, offset, 'ai');
+  // Existing battery coverage — count batteries within range of each target
+  const blocBatteries = gameState.interceptors.filter(b => gameState.getBlocId(b.countryId) === bloc.id);
+
+  // Score = target value / (1 + batteries already covering it). Gaps rise to the top.
+  let best = null;
+  let bestScore = -Infinity;
+  for (const t of targets) {
+    let coverage = 0;
+    for (const b of blocBatteries) {
+      if (geoDistance(b.position, t.pos) < 0.12) coverage++;
+    }
+    const score = t.weight / (1 + coverage * 2);
+    if (score > bestScore) {
+      bestScore = score;
+      best = t;
+    }
+  }
+  if (!best) return;
+
+  // Jitter slightly so clustered batteries don't stack on identical pixels
+  const placement = [
+    best.pos[0] + (Math.random() - 0.5) * 1.5,
+    best.pos[1] + (Math.random() - 0.5) * 1.5,
+  ];
+  placeBattery(country.id, placement, 'ai');
 }
 
 function evaluateDiplomacy(country) {
@@ -559,7 +600,8 @@ function evaluateDiplomacy(country) {
     if (gameState.canInvade(country.id, other.id)) {
       const cost = gameState.getInvasionCost(country.id, other.id);
       const affordThreshold = 1.5 / personality.invasionBias; // aggressive invaders need less margin
-      if (country.tokens >= cost * affordThreshold) {
+      const invBloc = gameState.getBloc(country.id);
+      if (invBloc && invBloc.tokens >= cost * affordThreshold) {
         gameState.executeInvasion(country.id, other.id);
         gameState.addNotification(`${country.name} has invaded ${other.name}!`, 'elimination');
         return;
@@ -656,17 +698,19 @@ export function playerLaunchMissile(origin, target, targetCountryId) {
   const player = gameState.getPlayer();
   if (!player) return false;
 
-  // Find the silo at `origin` and verify it has this missile type loaded
-  const silo = player.launchSites.find(s =>
-    s.coords[0] === origin[0] && s.coords[1] === origin[1]
+  // Find the silo at `origin` anywhere in the player's bloc
+  const blocSilos = gameState.getBlocSilos(gameState.playerBlocId);
+  const match = blocSilos.find(e =>
+    e.site.coords[0] === origin[0] && e.site.coords[1] === origin[1]
   );
-  if (!silo) return false;
+  if (!match) return false;
+  const silo = match.site;
   if (!silo.loadedMissiles || !silo.loadedMissiles[playerMissileType]) return false;
 
   if (!targetCountryId) {
     let bestDist = Infinity;
     for (const [id, country] of gameState.countries) {
-      if (id === player.id) continue;
+      if (gameState.isInPlayerBloc(id)) continue;
       if (gameState.isEliminated(id)) continue;
       const dx = target[0] - country.centroid[0];
       const dy = target[1] - country.centroid[1];
@@ -678,7 +722,8 @@ export function playerLaunchMissile(origin, target, targetCountryId) {
     }
   }
 
-  createMissile(player.id, targetCountryId, origin, target, playerMissileType, true);
+  // Attribute the launch to the actual silo's host country so cooldown lands correctly
+  createMissile(match.countryId, targetCountryId, origin, target, playerMissileType, true);
   silo.loadedMissiles[playerMissileType] -= 1;
   if (silo.loadedMissiles[playerMissileType] <= 0) delete silo.loadedMissiles[playerMissileType];
   player.combatStats.missilesLaunched++;

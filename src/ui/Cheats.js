@@ -20,76 +20,74 @@ const CHEATS = {
   'motherlode': {
     desc: 'The Sims called, they want their cheat back',
     fn: (args) => {
-      const p = gameState.getPlayer();
-      if (!p) return log('404: Player not found. Existential crisis initiated.', 'error');
+      const bloc = gameState.blocs.get(gameState.playerBlocId);
+      if (!bloc) return log('404: Player bloc not found.', 'error');
       const amount = parseInt(args[0]) || 200;
-      p.tokens = amount;
-      p.tokenCap = Math.max(p.tokenCap, amount);
-      log(`Ka-ching! ${amount} tokens. Your military-industrial complex thanks you.`, 'success');
+      bloc.tokens = amount;
+      bloc.tokenCap = Math.max(bloc.tokenCap, amount);
+      log(`Ka-ching! ${amount} tokens to the ${bloc.name}.`, 'success');
     },
   },
   'iamgod': {
     desc: 'Unlimited power (side effects may include hubris)',
     fn: () => {
-      const p = gameState.getPlayer();
-      if (!p) return;
-      p.tokens = 999;
-      p.tokenCap = 999;
-      p.fissile = 999;
-      p.rareEarth = 999;
-      log('You now have the GDP of a small galaxy. Use wisely. (You won\'t.)', 'success');
+      const bloc = gameState.blocs.get(gameState.playerBlocId);
+      if (!bloc) return;
+      bloc.tokens = 999;
+      bloc.tokenCap = 999;
+      bloc.fissile = 999;
+      bloc.rareEarth = 999;
+      log(`${bloc.name} now has the GDP of a small galaxy. Use wisely.`, 'success');
     },
   },
   'armory': {
-    desc: 'armory <type> [count] — add missiles directly to player stockpile',
+    desc: 'armory <type> [count] — add missiles directly to bloc stockpile',
     fn: (args) => {
-      const p = gameState.getPlayer();
-      if (!p) return;
+      const bloc = gameState.blocs.get(gameState.playerBlocId);
+      if (!bloc) return;
       const type = args[0];
       const count = parseInt(args[1]) || 10;
       if (!type || !PRODUCTION[type]) {
         log(`Unknown type. Options: ${Object.keys(PRODUCTION).join(', ')}`, 'error');
         return;
       }
-      p.stockpile[type] = (p.stockpile[type] || 0) + count;
-      log(`Added ${count}× ${type} to stockpile. Auto-load will distribute to silos.`, 'success');
+      bloc.stockpile[type] = (bloc.stockpile[type] || 0) + count;
+      log(`Added ${count}× ${type} to ${bloc.name} stockpile.`, 'success');
     },
   },
   'fullstock': {
-    desc: 'Fill every player silo to max capacity with tactical missiles',
+    desc: 'Fill every bloc silo to max capacity with tactical missiles',
     fn: () => {
-      const p = gameState.getPlayer();
-      if (!p) return;
+      const silos = gameState.getBlocSilos(gameState.playerBlocId);
       let total = 0;
-      for (const silo of p.launchSites) {
-        silo.loadedMissiles = silo.loadedMissiles || {};
-        const existing = Object.values(silo.loadedMissiles).reduce((s, n) => s + n, 0);
+      for (const { site } of silos) {
+        site.loadedMissiles = site.loadedMissiles || {};
+        const existing = Object.values(site.loadedMissiles).reduce((s, n) => s + n, 0);
         const room = 4 - existing;
         if (room > 0) {
-          silo.loadedMissiles.tactical = (silo.loadedMissiles.tactical || 0) + room;
+          site.loadedMissiles.tactical = (site.loadedMissiles.tactical || 0) + room;
           total += room;
         }
       }
-      log(`Loaded ${total}× tactical across ${p.launchSites.length} silos.`, 'success');
+      log(`Loaded ${total}× tactical across ${silos.length} bloc silos.`, 'success');
     },
   },
   'armageddon': {
-    desc: 'Fill every silo with nukes. Pray.',
+    desc: 'Fill every bloc silo with nukes. Pray.',
     fn: () => {
-      const p = gameState.getPlayer();
-      if (!p) return;
       MISSILE_TYPES.nuke.unlockAt = 0;
+      const silos = gameState.getBlocSilos(gameState.playerBlocId);
       let total = 0;
-      for (const silo of p.launchSites) {
-        silo.loadedMissiles = silo.loadedMissiles || {};
-        const existing = Object.values(silo.loadedMissiles).reduce((s, n) => s + n, 0);
+      for (const { site } of silos) {
+        site.loadedMissiles = site.loadedMissiles || {};
+        const existing = Object.values(site.loadedMissiles).reduce((s, n) => s + n, 0);
         const room = 4 - existing;
         if (room > 0) {
-          silo.loadedMissiles.nuke = (silo.loadedMissiles.nuke || 0) + room;
+          site.loadedMissiles.nuke = (site.loadedMissiles.nuke || 0) + room;
           total += room;
         }
       }
-      log(`${total} nukes loaded. "I have become Death, destroyer of silos."`, 'error');
+      log(`${total} nukes loaded. "I have become Death."`, 'error');
     },
   },
   'opensesame': {
@@ -252,20 +250,20 @@ const CHEATS = {
     },
   },
   'factory': {
-    desc: 'Inspect production state: queue, stockpile, fissile, rare earth',
+    desc: 'Inspect bloc production state: queue, stockpile, fissile, rare earth',
     fn: () => {
-      const p = gameState.getPlayer();
-      if (!p) return;
-      log(`Factories: ${p.factoryCount} │ Fissile: ${p.fissile.toFixed(1)} │ Rare Earth: ${p.rareEarth.toFixed(1)}`, 'info');
-      const stock = Object.entries(p.stockpile).filter(([, n]) => n > 0).map(([t, n]) => `${t}:${n}`).join(' ') || '(empty)';
+      const bloc = gameState.blocs.get(gameState.playerBlocId);
+      if (!bloc) return;
+      log(`${bloc.name} │ Factories: ${bloc.factoryCount} │ Fissile: ${bloc.fissile.toFixed(1)} │ Rare Earth: ${bloc.rareEarth.toFixed(1)}`, 'info');
+      const stock = Object.entries(bloc.stockpile).filter(([, n]) => n > 0).map(([t, n]) => `${t}:${n}`).join(' ') || '(empty)';
       log(`Stockpile: ${stock}`, 'info');
-      if (p.productionQueue.length === 0) {
+      if (bloc.productionQueue.length === 0) {
         log('Queue: (empty)', 'info');
       } else {
-        p.productionQueue.forEach((it, i) => {
+        bloc.productionQueue.forEach((it, i) => {
           const cfg = PRODUCTION[it.type];
           const eta = cfg ? Math.max(0, cfg.buildTime - it.progress).toFixed(1) : '?';
-          const inSlot = i < p.factoryCount;
+          const inSlot = i < bloc.factoryCount;
           const slot = inSlot ? '▶' : ' ';
           let tag = '';
           if (inSlot && !it.started) tag = ' (stalled — resources)';
@@ -316,29 +314,27 @@ const CHEATS = {
     },
   },
   'silos': {
-    desc: 'Show player silos and their loaded missiles',
+    desc: 'Show bloc silos and their loaded missiles',
     fn: () => {
-      const p = gameState.getPlayer();
-      if (!p) return;
-      p.launchSites.forEach((s, i) => {
+      const silos = gameState.getBlocSilos(gameState.playerBlocId);
+      silos.forEach(({ site: s, countryId }, i) => {
         const loads = Object.entries(s.loadedMissiles || {}).filter(([, n]) => n > 0).map(([t, n]) => `${t}:${n}`).join(' ') || '(empty)';
-        const state = s.disabled ? `DISABLED until ${Math.ceil(s.disabledUntil - gameState.elapsed)}s` : 'active';
-        log(`[${i}] (${s.coords[0].toFixed(1)},${s.coords[1].toFixed(1)}) ${state} — ${loads}`, 'info');
+        const state = s.disabled ? `DISABLED ${Math.ceil(s.disabledUntil - gameState.elapsed)}s` : 'active';
+        const cname = gameState.countries.get(countryId)?.name || countryId;
+        log(`[${i}] ${cname} (${s.coords[0].toFixed(1)},${s.coords[1].toFixed(1)}) ${state} — ${loads}`, 'info');
       });
     },
   },
   'queue': {
-    desc: 'queue <type> [count] — add missiles to player production queue',
+    desc: 'queue <type> [count] — add missiles to bloc production queue',
     fn: (args) => {
-      const p = gameState.getPlayer();
-      if (!p) return;
       const type = args[0];
       const count = parseInt(args[1]) || 1;
       if (!type || !PRODUCTION[type]) {
         log(`Unknown missile type. Options: ${Object.keys(PRODUCTION).join(', ')}`, 'error');
         return;
       }
-      enqueueMissile(p.id, type, count);
+      enqueueMissile(gameState.playerBlocId, type, count);
       log(`Queued ${count}× ${type}`, 'success');
     },
   },
