@@ -115,11 +115,9 @@ function checkGameOver() {
   }
 
   const activeNations = gameState.getActiveCountries();
-  const playerAllies = gameState.getAllies(player.id);
-  const playerSide = new Set([player.id, ...playerAllies]);
-  const enemies = activeNations.filter(c => !playerSide.has(c.id));
+  const enemies = activeNations.filter(c => c.id !== player.id);
 
-  // === MILITARY VICTORY — all enemies eliminated ===
+  // === MILITARY VICTORY — all other nations eliminated ===
   if (enemies.length === 0) {
     gameState.phase = 'GAME_OVER';
     events.emit('game:over', { result: 'military_victory' });
@@ -130,15 +128,6 @@ function checkGameOver() {
   if (player.tokens >= ECONOMIC_VICTORY_TOKENS) {
     gameState.phase = 'GAME_OVER';
     events.emit('game:over', { result: 'economic_victory' });
-    return;
-  }
-
-  // === DIPLOMATIC VICTORY — ally with 60%+ of surviving nations ===
-  const allyCount = playerAllies.filter(id => !gameState.isEliminated(id)).length;
-  const totalActive = activeNations.length;
-  if (totalActive > 2 && allyCount / (totalActive - 1) >= DIPLOMATIC_VICTORY_PERCENT) {
-    gameState.phase = 'GAME_OVER';
-    events.emit('game:over', { result: 'diplomatic_victory' });
     return;
   }
 }

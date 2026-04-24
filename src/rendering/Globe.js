@@ -235,8 +235,16 @@ function updateCountryStyles() {
         return 'country';
       }
       if (id === playerId) return 'country selected-player';
+      // Conquered territory takes the conqueror's color
+      const state = gameState.countries.get(id);
+      const owner = state?.conqueredBy;
+      if (gameState.isEliminated(id) && owner) {
+        if (owner === playerId) return 'country selected-player';
+        const rel = gameState.getRelationship(playerId, owner);
+        if (rel <= -50) return 'country hostile';
+        return 'country neutral-active';
+      }
       if (gameState.isEliminated(id)) return 'country non-playable';
-      if (gameState.isAllied(playerId, id)) return 'country allied';
       const rel = gameState.getRelationship(playerId, id);
       if (rel <= -50) return 'country hostile';
       return 'country neutral-active';
@@ -246,7 +254,15 @@ function updateCountryStyles() {
       const state = gameState.countries.get(id);
       if (!state) return null;
       if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return null;
-      if (gameState.isEliminated(id)) return '#060608';
+      if (gameState.isEliminated(id)) {
+        const owner = state.conqueredBy;
+        if (!owner) return '#060608';
+        // Color by owner's team, slightly dimmed to show it's annexed territory
+        if (owner === playerId) return 'rgb(0, 28, 44)';
+        const rel = gameState.getRelationship(playerId, owner);
+        if (rel <= -50) return 'rgb(34, 6, 6)';
+        return 'rgb(10, 18, 10)';
+      }
 
       // Fog of war — unrevealed nations are very dark
       const revealed = id === playerId
@@ -619,6 +635,15 @@ export function isPointInCountry(lonLat, countryId) {
 
   const feats = countryFeatures.filter(f => String(f.id) === countryId);
   return feats.some(f => geoContains(f, lonLat));
+}
+
+// True if point is on countryId's original land OR any territory they've conquered.
+export function isPointInOwnedTerritory(lonLat, ownerId) {
+  if (isPointInCountry(lonLat, ownerId)) return true;
+  for (const [id, state] of gameState.countries) {
+    if (state.conqueredBy === ownerId && isPointInCountry(lonLat, id)) return true;
+  }
+  return false;
 }
 
 // Override country click — Kashmir region clicks register as India

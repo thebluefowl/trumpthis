@@ -6,7 +6,7 @@ import { playerLaunchMissile, getPlayerMissileType, getEffectiveCost } from '../
 import { placeBattery, manualIntercept } from '../engine/InterceptorSystem.js';
 import { setTargetingPreview, setBatteryPreview } from '../rendering/CanvasOverlay.js';
 import { getProjection, isVisible } from '../rendering/Projection.js';
-import { isPointInCountry, renderPaths } from '../rendering/Globe.js';
+import { isPointInCountry, isPointInOwnedTerritory, renderPaths } from '../rendering/Globe.js';
 import { showToast } from './Toast.js';
 
 let mode = 'IDLE'; // IDLE | TARGETING | PLACING_BATTERY | BUILDING_SILO
@@ -168,7 +168,7 @@ export function initLaunchUI() {
       if (performance.now() - targetingStartedAt < 200) return;
       if (!clickPos || !inGlobe) { cancelMode(); return; }
 
-      if (!isPointInCountry(clickPos, gameState.playerCountryId)) {
+      if (!isPointInOwnedTerritory(clickPos, gameState.playerCountryId)) {
         showToast('Must place on your own territory', 'error');
         return;
       }
@@ -190,7 +190,7 @@ export function initLaunchUI() {
       if (performance.now() - targetingStartedAt < 200) return;
       if (!clickPos || !inGlobe) { cancelMode(); return; }
 
-      if (!isPointInCountry(clickPos, gameState.playerCountryId)) {
+      if (!isPointInOwnedTerritory(clickPos, gameState.playerCountryId)) {
         showToast('Must build on your own territory', 'error');
         return;
       }

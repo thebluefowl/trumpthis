@@ -122,29 +122,12 @@ class GameState {
     this.setRelationship(a, b, current + delta);
   }
 
-  // === Alliances ===
-
-  isAllied(a, b) {
-    return this.alliances.has(relKey(a, b));
-  }
-
-  formAlliance(a, b) {
-    this.alliances.add(relKey(a, b));
-  }
-
-  breakAlliance(a, b) {
-    this.alliances.delete(relKey(a, b));
-  }
-
-  getAllies(countryId) {
-    const allies = [];
-    for (const key of this.alliances) {
-      const [a, b] = key.split(':');
-      if (a === countryId) allies.push(b);
-      else if (b === countryId) allies.push(a);
-    }
-    return allies;
-  }
+  // === Alliances (removed — every nation for itself) ===
+  // Stubs kept so existing callers don't break; always report no alliances.
+  isAllied() { return false; }
+  formAlliance() {}
+  breakAlliance() {}
+  getAllies() { return []; }
 
   // === Elimination ===
 
@@ -243,16 +226,22 @@ class GameState {
     attacker.population += target.population;
     attacker.startingPopulation += target.startingPopulation;
 
-    // Inherit launch sites
+    // Inherit launch sites — fully operational under new management
     for (const site of target.launchSites) {
-      attacker.launchSites.push({ ...site });
+      attacker.launchSites.push({
+        ...site,
+        disabled: false,
+        disabledUntil: 0,
+        loadedMissiles: { ...(site.loadedMissiles || {}) },
+      });
     }
 
-    // Inherit batteries
+    // Inherit batteries — ready to fire immediately
     for (const battery of this.interceptors) {
       if (battery.countryId === targetId) {
         battery.countryId = attackerId;
         battery.role = attacker.role;
+        battery.cooldownUntil = 0;
       }
     }
 
@@ -261,9 +250,10 @@ class GameState {
       attacker.cities.push({ ...city });
     }
 
-    // Eliminate the target
+    // Eliminate the target; remember who owns the territory now
     target.population = 0;
     target.cities.forEach(c => { c.population = 0; c.destroyed = true; });
+    target.conqueredBy = attackerId;
     this.eliminateCountry(targetId);
 
     return true;

@@ -24,11 +24,19 @@ function autoLoadSilos(country) {
 
   for (const type in country.stockpile) {
     while (country.stockpile[type] > 0) {
-      // Find first silo with free capacity
-      const silo = country.launchSites.find(s => siloLoadedTotal(s) < SILO_CAPACITY);
-      if (!silo) break;
-      if (!silo.loadedMissiles) silo.loadedMissiles = {};
-      silo.loadedMissiles[type] = (silo.loadedMissiles[type] || 0) + 1;
+      // Pick the least-loaded silo with capacity — spreads missiles evenly
+      let target = null;
+      let minLoad = Infinity;
+      for (const s of country.launchSites) {
+        const load = siloLoadedTotal(s);
+        if (load < SILO_CAPACITY && load < minLoad) {
+          minLoad = load;
+          target = s;
+        }
+      }
+      if (!target) break;
+      if (!target.loadedMissiles) target.loadedMissiles = {};
+      target.loadedMissiles[type] = (target.loadedMissiles[type] || 0) + 1;
       country.stockpile[type] -= 1;
     }
   }

@@ -114,13 +114,7 @@ function updateNationAI(country, dt) {
     state.researchCooldown = 20000 + Math.random() * 20000;
   }
 
-  // === Diplomacy ===
-  state.timeSinceDiplomacy += dt * 1000;
-  if (state.timeSinceDiplomacy >= state.diplomacyCooldown) {
-    evaluateDiplomacy(country);
-    state.timeSinceDiplomacy = 0;
-    state.diplomacyCooldown = 15000 + Math.random() * 15000;
-  }
+  // === Diplomacy removed — every nation for itself ===
 }
 
 function pickTarget(country) {

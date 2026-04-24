@@ -181,6 +181,8 @@ export function renderHUD() {
 
   // Tokens
   setIfChanged('tb-tokens', Math.floor(player.tokens));
+  setIfChanged('tb-fissile', (player.fissile || 0).toFixed(1));
+  setIfChanged('tb-rare', (player.rareEarth || 0).toFixed(1));
 
   // Token rate
   const tokenRate = (TOKEN_RATES[player.tier] * getTokenMultiplier() * Math.log(player.population / player.startingPopulation + 1) / Math.log(2)).toFixed(1);

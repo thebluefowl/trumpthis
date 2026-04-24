@@ -1,7 +1,5 @@
 import { gameState } from '../state/GameState.js';
 import { formatPop, renderPaths } from '../rendering/Globe.js';
-import { proposeAlliance, breakAllianceBetween, acceptAlliance } from '../state/Diplomacy.js';
-import { REL_ALLIED_THRESHOLD } from '../constants.js';
 import { isRevealed } from '../state/Intel.js';
 import { getPersonalityName } from '../ai/Personalities.js';
 
@@ -45,17 +43,6 @@ export function renderNationsTab(el) {
       const inFlight = gameState.missiles.filter(m => m.fromCountryId === c.id).length;
       const incoming = gameState.missiles.filter(m => m.toCountryId === c.id).length;
       const batteries = seeBatteries ? gameState.getBatteryCount(c.id) : null;
-      const allies = gameState.getAllies(c.id).map(id => gameState.countries.get(id)?.name).filter(Boolean);
-
-      let actionBtn = '';
-      if (c.allied) {
-        actionBtn = `<button class="sb-btn danger" data-action="break" data-id="${c.id}">Break Alliance</button>`;
-      } else if (hasProposal) {
-        actionBtn = `<button class="sb-btn primary" data-action="accept" data-id="${c.id}">Accept Alliance</button>`;
-      } else if (c.rel >= REL_ALLIED_THRESHOLD) {
-        actionBtn = `<button class="sb-btn accent" data-action="propose" data-id="${c.id}">Propose Alliance</button>`;
-      }
-
       const canInvade = gameState.canInvade(playerId, c.id);
       const invasionCost = canInvade ? gameState.getInvasionCost(playerId, c.id) : 0;
       let invadeBtn = '';
@@ -79,8 +66,6 @@ export function renderNationsTab(el) {
           <div class="sb-row"><span class="sb-row-label">Incoming</span><span class="sb-row-value">${incoming}</span></div>
           <div class="sb-row"><span class="sb-row-label">Launched</span><span class="sb-row-value">${c.combatStats.missilesLaunched}</span></div>
           <div class="sb-row"><span class="sb-row-label">Dmg Dealt</span><span class="sb-row-value">${formatPop(c.combatStats.damageDealt)}</span></div>
-          <div class="sb-row"><span class="sb-row-label">Allies</span><span class="sb-row-value">${allies.length > 0 ? allies.slice(0, 3).join(', ') : 'None'}</span></div>
-          ${actionBtn}
           ${invadeBtn}
         </div>
       `;
@@ -92,7 +77,6 @@ export function renderNationsTab(el) {
           <div class="nation-dot" style="background: ${relColor}"></div>
           <div class="nation-name">${c.name}</div>
           <div class="nation-badge ${statusClass}">${statusText}</div>
-          ${hasProposal ? '<div class="nation-badge allied">OFFER</div>' : ''}
         </div>
         <div class="nation-pop-bar"><div class="nation-pop-fill" style="width:${popPct}%; background:${c.elim ? 'var(--text-dim)' : popPct > 50 ? 'var(--green)' : popPct > 25 ? 'var(--amber)' : 'var(--red)'}"></div></div>
         ${expanded}
@@ -108,10 +92,7 @@ export function renderNationsTab(el) {
       e.stopPropagation();
       const action = actionBtn.dataset.action;
       const targetId = actionBtn.dataset.id;
-      if (action === 'propose') proposeAlliance(playerId, targetId);
-      else if (action === 'accept') acceptAlliance(playerId, targetId);
-      else if (action === 'break') breakAllianceBetween(playerId, targetId);
-      else if (action === 'invade') {
+      if (action === 'invade') {
         const success = gameState.executeInvasion(playerId, targetId);
         if (success) {
           const targetName = gameState.countries.get(targetId)?.name || 'Unknown';

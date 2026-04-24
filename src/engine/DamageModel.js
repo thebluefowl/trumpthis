@@ -19,8 +19,16 @@ export function processImpacts() {
     if (explosion.damageApplied) continue;
     explosion.damageApplied = true;
 
-    const country = gameState.countries.get(explosion.countryId);
-    if (!country || gameState.isEliminated(country.id)) continue;
+    let country = gameState.countries.get(explosion.countryId);
+    if (!country) continue;
+    // Redirect strikes on conquered territory to the conqueror
+    if (gameState.isEliminated(country.id) && country.conqueredBy) {
+      const owner = gameState.countries.get(country.conqueredBy);
+      if (owner && !gameState.isEliminated(owner.id)) country = owner;
+      else continue;
+    } else if (gameState.isEliminated(country.id)) {
+      continue;
+    }
 
     const impactPos = explosion.position;
     // Apply attacker's tech damage multiplier

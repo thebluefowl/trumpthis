@@ -4,6 +4,7 @@ import { renderOverviewTab } from './SidebarOverview.js';
 import { renderNationsTab } from './SidebarNations.js';
 import { renderDiplomacyTab } from './SidebarDiplomacy.js';
 import { renderResearchTab } from './SidebarResearch.js';
+import { renderProductionTab, resetProductionTab } from './SidebarProduction.js';
 import { renderLogTab } from './SidebarLog.js';
 
 let contentEl = null;
@@ -25,7 +26,7 @@ export function initSidebar() {
 
 export function renderSidebar() {
   if (!contentEl) return;
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
   // Throttle to ~4 fps
   const now = performance.now();
@@ -41,6 +42,7 @@ function renderTab() {
   switch (currentTab) {
     case 'overview': renderOverviewTab(contentEl); break;
     case 'nations': renderNationsTab(contentEl); break;
+    case 'production': renderProductionTab(contentEl); break;
     case 'diplomacy': renderDiplomacyTab(contentEl); break;
     case 'research': renderResearchTab(contentEl); break;
     case 'log': renderLogTab(contentEl); break;
@@ -63,4 +65,5 @@ export function getCurrentTab() {
 export function resetSidebar() {
   currentTab = 'overview';
   lastRenderTime = 0;
+  resetProductionTab();
 }

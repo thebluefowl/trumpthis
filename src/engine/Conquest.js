@@ -87,19 +87,26 @@ function executeClaim(claimerId, eliminatedId) {
   claimer.population += remainingPop;
   claimer.startingPopulation += eliminated.startingPopulation;
 
-  // Inherit operational launch sites
+  // Inherit launch sites — reset cooldown/disabled so they're operational
   for (const site of eliminated.launchSites) {
-    if (!site.disabled) {
-      claimer.launchSites.push({ ...site });
-    }
+    claimer.launchSites.push({
+      ...site,
+      disabled: false,
+      disabledUntil: 0,
+      loadedMissiles: { ...(site.loadedMissiles || {}) },
+    });
   }
 
-  // Inherit interceptor batteries
+  // Inherit interceptor batteries — ready to fire immediately
   const batteries = gameState.interceptors.filter(b => b.countryId === eliminatedId);
   for (const battery of batteries) {
     battery.countryId = claimerId;
     battery.role = claimer.role;
+    battery.cooldownUntil = 0;
   }
+
+  // Remember who owns the territory for map coloring
+  eliminated.conqueredBy = claimerId;
 
   const claimerName = claimer.name;
   const elimName = eliminated.name;

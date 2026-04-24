@@ -275,6 +275,38 @@ const CHEATS = {
       }
     },
   },
+  'weaken': {
+    desc: 'weaken <name> [percent] — drop target to N% of starting pop (default 20)',
+    fn: (args) => {
+      if (args.length === 0) return log('Usage: weaken <country name> [percent]', 'error');
+      // Find trailing number (optional) — everything before is the country name
+      let pctArg = parseFloat(args[args.length - 1]);
+      let nameTokens = args;
+      if (!Number.isNaN(pctArg)) nameTokens = args.slice(0, -1);
+      else pctArg = 20;
+      const name = nameTokens.join(' ').toLowerCase();
+      if (!name) return log('Usage: weaken <country name> [percent]', 'error');
+
+      let match = null;
+      for (const [, c] of gameState.countries) {
+        if (c.name.toLowerCase() === name) { match = c; break; }
+      }
+      if (!match) {
+        for (const [, c] of gameState.countries) {
+          if (c.name.toLowerCase().includes(name)) { match = c; break; }
+        }
+      }
+      if (!match) return log(`Country "${nameTokens.join(' ')}" not found.`, 'error');
+
+      const ratio = Math.max(0, Math.min(1, pctArg / 100));
+      for (const city of match.cities) {
+        city.population = Math.floor(city.startingPopulation * ratio);
+        if (city.population <= 0) city.destroyed = true;
+      }
+      match.population = match.cities.reduce((s, c) => s + c.population, 0);
+      log(`${match.name} weakened to ${pctArg}% (${(match.population / 1e6).toFixed(1)}M). ${ratio < 0.25 ? 'Invasion unlocked.' : ''}`, 'warn');
+    },
+  },
   'beginwar': {
     desc: 'Skip setup phase — start the war now',
     fn: () => {
