@@ -230,7 +230,7 @@ function updateCountryStyles() {
     .attr('class', d => {
       const id = String(d.id);
       if (!PLAYABLE_IDS.has(id)) return 'country non-playable';
-      if (gameState.phase !== 'PLAYING') {
+      if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') {
         if (id === playerId) return 'country selected-player';
         return 'country';
       }
@@ -245,7 +245,7 @@ function updateCountryStyles() {
       const id = String(d.id);
       const state = gameState.countries.get(id);
       if (!state) return null;
-      if (gameState.phase !== 'PLAYING') return null;
+      if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return null;
       if (gameState.isEliminated(id)) return '#060608';
 
       // Fog of war — unrevealed nations are very dark
@@ -274,7 +274,7 @@ function updateCountryStyles() {
     })
     .style('stroke', d => {
       const id = String(d.id);
-      if (gameState.phase !== 'PLAYING') return null;
+      if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return null;
       if (id === playerId || gameState.isAllied(playerId, id)) return null; // keep default
       const revealed = isIntelRevealed(id, 'batteries');
       if (!revealed) return '#1e2436'; // dim but visible border for fogged
@@ -293,7 +293,7 @@ export function initLaunchSites() {
 
 export function renderLaunchSites() {
   if (!launchSiteGroup) return;
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
   const sites = [];
   // Only show player's launch sites (other nations' sites are hidden)
@@ -551,7 +551,7 @@ export function initBatteries() {
 
 export function renderBatteries() {
   if (!batteryGroup) return;
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
   // Only show player's batteries + revealed enemy batteries
   const batteries = gameState.interceptors.filter(b => {

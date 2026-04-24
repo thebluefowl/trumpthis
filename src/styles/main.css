@@ -895,6 +895,35 @@ body.placing { cursor: crosshair; }
   background: repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 6px);
 }
 
+/* === Setup Phase — top-bar segment === */
+.tb-seg-setup {
+  border: 1px solid var(--amber);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+.tb-seg-setup .tb-label { color: var(--amber); }
+.tb-seg-setup .tb-val {
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  text-align: right;
+}
+.tb-btn-begin-war {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-size: 10px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.tb-btn-begin-war:hover { background: #ef4444; }
+
 /* === Responsive === */
 @media (max-width: 800px) {
   .intel-sidebar { width: 240px; }

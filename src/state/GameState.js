@@ -1,4 +1,4 @@
-import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES, INVASION_THRESHOLD, INVASION_BASE_COST, STARTING_FACTORIES, STARTING_STOCKPILE } from '../constants.js';
+import { STARTING_TOKENS, TOKEN_CAPS, MAX_BATTERIES, INVASION_THRESHOLD, INVASION_BASE_COST, STARTING_FACTORIES, STARTING_STOCKPILE, SETUP_PHASE_DURATION } from '../constants.js';
 import { COUNTRIES, COUNTRY_MAP } from './countryData.js';
 
 function relKey(a, b) {
@@ -11,7 +11,8 @@ class GameState {
   }
 
   reset() {
-    this.phase = 'SELECT'; // SELECT | PICK_BLOC | PLAYING | GAME_OVER
+    this.phase = 'SELECT'; // SELECT | PICK_BLOC | SETUP | PLAYING | GAME_OVER
+    this.setupEndsAt = 0;
     this.playerCountryId = null;
     this.playerBlocId = null;
 
@@ -89,8 +90,15 @@ class GameState {
     this.playerCountryId = playerCountryId;
     this.playerBlocId = blocId;
     this.initAllCountries();
-    this.phase = 'PLAYING';
+    this.phase = 'SETUP';
     this.elapsed = 0;
+    this.setupEndsAt = SETUP_PHASE_DURATION;
+  }
+
+  beginWar() {
+    if (this.phase !== 'SETUP') return;
+    this.phase = 'PLAYING';
+    this.addNotification('War has begun.', 'escalation');
   }
 
   getPlayer() {
@@ -210,6 +218,7 @@ class GameState {
   }
 
   executeInvasion(attackerId, targetId) {
+    if (this.phase !== 'PLAYING') return false;
     if (!this.canInvade(attackerId, targetId)) return false;
 
     const attacker = this.countries.get(attackerId);

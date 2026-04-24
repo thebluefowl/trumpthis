@@ -12,6 +12,39 @@ import { TOKEN_RATES } from '../constants.js';
 import { getTokenMultiplier } from '../engine/Escalation.js';
 
 let prevValues = {};
+let setupBannerEl = null;
+
+function renderSetupBanner() {
+  if (gameState.phase === 'SETUP') {
+    if (!setupBannerEl) {
+      const topBar = document.querySelector('.top-bar');
+      if (!topBar) return;
+      setupBannerEl = document.createElement('div');
+      setupBannerEl.id = 'setup-seg';
+      setupBannerEl.className = 'tb-seg tb-seg-setup';
+      setupBannerEl.innerHTML = `
+        <span class="tb-label">SETUP</span>
+        <span class="tb-val" id="setup-countdown">60s</span>
+        <button class="tb-btn tb-btn-begin-war" id="btn-begin-war">BEGIN WAR</button>
+      `;
+      // Insert after DEFCON's following divider
+      const defconSeg = document.getElementById('tb-defcon')?.closest('.tb-seg');
+      const afterDivider = defconSeg?.nextElementSibling;
+      if (afterDivider && afterDivider.nextSibling) {
+        topBar.insertBefore(setupBannerEl, afterDivider.nextSibling);
+      } else {
+        topBar.appendChild(setupBannerEl);
+      }
+      document.getElementById('btn-begin-war').addEventListener('click', () => gameState.beginWar());
+    }
+    const remaining = Math.max(0, Math.ceil(gameState.setupEndsAt - gameState.elapsed));
+    const cd = document.getElementById('setup-countdown');
+    if (cd) cd.textContent = `${remaining}s`;
+  } else if (setupBannerEl) {
+    setupBannerEl.remove();
+    setupBannerEl = null;
+  }
+}
 
 export function initHUD() {
   prevValues = {};
@@ -52,7 +85,7 @@ export function initHUD() {
 
   // S key shortcut for satellite
   document.addEventListener('keydown', (e) => {
-    if (gameState.phase !== 'PLAYING') return;
+    if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
     if (e.key === 's' || e.key === 'S') {
       if (e.target.tagName === 'INPUT') return;
       const count = getSatelliteCount();
@@ -120,7 +153,7 @@ export function initHUD() {
 
   // Number key shortcuts
   document.addEventListener('keydown', (e) => {
-    if (gameState.phase !== 'PLAYING') return;
+    if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
     const typeMap = { '1': 'drone', '2': 'tactical', '3': 'cruise', '4': 'decoy', '5': 'icbm', '6': 'dirty_bomb', '7': 'emp', '8': 'mirv', '9': 'slbm', '0': 'hypersonic', 'n': 'nuke' };
     if (typeMap[e.key]) {
       const mtype = MISSILE_TYPES[typeMap[e.key]];
@@ -132,7 +165,8 @@ export function initHUD() {
 }
 
 export function renderHUD() {
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
+  renderSetupBanner();
   const player = gameState.getPlayer();
   if (!player) return;
 

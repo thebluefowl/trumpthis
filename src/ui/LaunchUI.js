@@ -30,9 +30,13 @@ export function initLaunchUI() {
 
   // A key shortcut for attack
   document.addEventListener('keydown', (e) => {
-    if (gameState.phase !== 'PLAYING') return;
+    if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
     if (e.key === 'a' || e.key === 'A') {
+      if (gameState.phase !== 'PLAYING') {
+        showToast('Attacks locked until war begins', 'warn');
+        return;
+      }
       if (mode === 'TARGETING') cancelMode();
       else enterAttackMode();
     }
@@ -52,14 +56,14 @@ export function initLaunchUI() {
 
   // Deploy button
   events.on('deploy:click', () => {
-    if (gameState.phase !== 'PLAYING') return;
+    if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
     if (mode === 'PLACING_BATTERY') cancelMode();
     else enterBatteryMode();
   });
 
   // Build silo button
   events.on('build:click', () => {
-    if (gameState.phase !== 'PLAYING') return;
+    if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
     if (mode === 'BUILDING_SILO') cancelMode();
     else enterSiloMode();
   });
@@ -148,7 +152,7 @@ export function initLaunchUI() {
 
   // Pointerup for battery placement and manual intercept
   document.addEventListener('pointerup', (e) => {
-    if (gameState.phase !== 'PLAYING') return;
+    if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
     const projection = getProjection();
     const clickPos = projection.invert(toGlobeCoords(e.clientX, e.clientY));

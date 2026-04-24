@@ -18,7 +18,7 @@ import { updateResearch } from './ResearchSystem.js';
 import { updateSatellite, cleanupIntel, updateFog, updateSatLaunches } from '../state/Intel.js';
 import { updateConquest, openClaimWindow } from './Conquest.js';
 import { events } from '../state/events.js';
-import { ECONOMIC_VICTORY_TOKENS, DIPLOMATIC_VICTORY_PERCENT } from '../constants.js';
+import { ECONOMIC_VICTORY_TOKENS, DIPLOMATIC_VICTORY_PERCENT, SETUP_TIME_MULT } from '../constants.js';
 
 let lastTime = 0;
 let running = false;
@@ -39,6 +39,22 @@ function tick(currentTime) {
   let dt = (currentTime - lastTime) / 1000;
   lastTime = currentTime;
   dt = Math.min(dt, 0.1);
+
+  if (!gameState.paused && gameState.phase === 'SETUP') {
+    gameState.elapsed += dt;
+    const boosted = dt * SETUP_TIME_MULT;
+    updateTokens(boosted);
+    updateResources(boosted);
+    updateProduction(boosted);
+    updateResearch(boosted);
+    updateSatellite(boosted);
+    updateSatLaunches();
+    updateFog();
+    cleanupIntel();
+    if (gameState.elapsed >= gameState.setupEndsAt) {
+      gameState.beginWar();
+    }
+  }
 
   if (!gameState.paused && gameState.phase === 'PLAYING') {
     gameState.elapsed += dt;

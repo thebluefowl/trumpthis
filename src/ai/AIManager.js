@@ -587,6 +587,7 @@ export function getPlayerMissileType() {
 
 // Exported for player use
 export function playerLaunchMissile(origin, target, targetCountryId) {
+  if (gameState.phase !== 'PLAYING') return false;
   const player = gameState.getPlayer();
   if (!player) return false;
 

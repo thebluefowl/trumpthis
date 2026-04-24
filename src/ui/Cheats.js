@@ -221,6 +221,14 @@ const CHEATS = {
       }
     },
   },
+  'beginwar': {
+    desc: 'Skip setup phase — start the war now',
+    fn: () => {
+      if (gameState.phase !== 'SETUP') return log('Not in setup phase.', 'warn');
+      gameState.beginWar();
+      log('Setup skipped. War begins.', 'warn');
+    },
+  },
   'silos': {
     desc: 'Show player silos and their loaded missiles',
     fn: () => {

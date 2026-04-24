@@ -301,6 +301,10 @@ export const STARTING_FACTORIES = 2;
 export const STARTING_STOCKPILE = { tactical: 5 };
 export const SILO_CAPACITY = 4; // max loaded missiles per silo
 
+// === Setup Phase ===
+export const SETUP_PHASE_DURATION = 60;   // seconds; placement + buildup before combat
+export const SETUP_TIME_MULT = 2.5;       // economy + production run at 2.5× during setup
+
 // Per-node per-second yield for strategic stockpile resources
 export const FISSILE_PER_URANIUM_NODE = 0.25;
 export const RAREEARTH_PER_NODE = 0.25;

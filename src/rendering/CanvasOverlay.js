@@ -738,7 +738,7 @@ function drawContamination(zone) {
 
 // === Interceptor Range Circles ===
 function drawInterceptorRanges() {
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
   const playerId = gameState.playerCountryId;
 
   for (const battery of gameState.interceptors) {
@@ -763,7 +763,7 @@ function drawInterceptorRanges() {
 
 // === Incoming Threat Lines ===
 function drawIncomingThreats() {
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
   const playerId = gameState.playerCountryId;
 
   for (const missile of gameState.missiles) {
@@ -794,7 +794,7 @@ function drawIncomingThreats() {
 
 // === Satellite Sweep ===
 function drawSatLaunchAnimations() {
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
   const launches = getSatLaunches();
   for (const launch of launches) {
@@ -847,7 +847,7 @@ function drawSatLaunchAnimations() {
 let satScreenPositions = [];
 
 function drawSatelliteSweep() {
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
   const sats = getAllSatellites();
   satScreenPositions = [];
@@ -917,7 +917,7 @@ export function getSatelliteAtScreen(screenX, screenY) {
 
 // === Resource Nodes ===
 function drawResourceNodes() {
-  if (gameState.phase !== 'PLAYING') return;
+  if (gameState.phase !== 'PLAYING' && gameState.phase !== 'SETUP') return;
 
   const nodes = getAllNodes();
   for (const node of nodes) {
